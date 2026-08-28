@@ -52,8 +52,9 @@ Single static binary. No Docker daemon, no `osv-scanner` install, no cluster-sid
 ## Usage
 
 ```sh
-stackradar scan                          # current kubeconfig context, all namespaces
+stackradar scan                          # pick a kubeconfig context (current one preselected), all namespaces
 stackradar scan --context prod -n payments -n checkout
+stackradar scan -N kube-system -N monitoring    # everything except those namespaces
 stackradar scan --min-severity high      # quieter per-image detail
 stackradar scan --json > report.json     # everything, machine-readable
 stackradar scan --serve                  # open the report in your browser (localhost only)

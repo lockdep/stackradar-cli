@@ -25,6 +25,7 @@ var scanOpts struct {
 	kubeconfig  string
 	kubeContext string
 	namespaces  []string
+	excludeNS   []string
 	allNS       bool
 	concurrency int
 	jsonOut     bool
@@ -52,8 +53,9 @@ to your container registries, api.osv.dev and (unless --no-kev) cisa.gov.`,
 func init() {
 	f := scanCmd.Flags()
 	f.StringVar(&scanOpts.kubeconfig, "kubeconfig", "", "path to kubeconfig (default: $KUBECONFIG or ~/.kube/config)")
-	f.StringVar(&scanOpts.kubeContext, "context", "", "kubeconfig context to use (default: current-context)")
+	f.StringVar(&scanOpts.kubeContext, "context", "", "kubeconfig context to use (default: interactive picker on a terminal, else current-context)")
 	f.StringSliceVarP(&scanOpts.namespaces, "namespace", "n", nil, "namespace(s) to scan (repeatable; default: all)")
+	f.StringSliceVarP(&scanOpts.excludeNS, "exclude-namespace", "N", nil, "namespace(s) to skip (repeatable; e.g. -N kube-system)")
 	f.IntVar(&scanOpts.concurrency, "concurrency", runtime.NumCPU(), "images to pull+scan in parallel")
 	f.BoolVar(&scanOpts.jsonOut, "json", false, "emit machine-readable JSON instead of the table")
 	f.BoolVar(&scanOpts.noKEV, "no-kev", false, "skip the CISA Known Exploited Vulnerabilities lookup")
@@ -77,15 +79,39 @@ func runScan(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	// No --context: let the user pick one when we can ask, preselecting the
+	// kubeconfig's current-context so Enter is the fast path.
+	if scanOpts.kubeContext == "" && !scanOpts.jsonOut {
+		if f, ok := stderr.(*os.File); ok && ui.CanPrompt(f) {
+			names, current, err := k8s.ListContexts(scanOpts.kubeconfig)
+			if err != nil {
+				return fmt.Errorf("reading kubeconfig: %w", err)
+			}
+			switch {
+			case len(names) == 0:
+				return fmt.Errorf("no contexts in kubeconfig; pass --kubeconfig")
+			case len(names) == 1:
+				scanOpts.kubeContext = names[0]
+			default:
+				chosen, err := ui.PickContext(f, names, current)
+				if err != nil {
+					return err
+				}
+				scanOpts.kubeContext = chosen
+			}
+		}
+	}
+
 	prog := ui.New(stderr, scanOpts.jsonOut)
 	prog.OnInterrupt(stop)
 	defer prog.Close()
 
 	// 1. What is running?
 	inv, err := k8s.ListRunningImages(ctx, k8s.Options{
-		Kubeconfig: scanOpts.kubeconfig,
-		Context:    scanOpts.kubeContext,
-		Namespaces: scanOpts.namespaces,
+		Kubeconfig:        scanOpts.kubeconfig,
+		Context:           scanOpts.kubeContext,
+		Namespaces:        scanOpts.namespaces,
+		ExcludeNamespaces: scanOpts.excludeNS,
 	})
 	if err != nil {
 		prog.Close()

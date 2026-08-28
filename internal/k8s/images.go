@@ -16,7 +16,10 @@ import (
 type Options struct {
 	Kubeconfig string
 	Context    string
+	// Namespaces to scan; empty means all.
 	Namespaces []string
+	// ExcludeNamespaces are skipped even if they appear in Namespaces.
+	ExcludeNamespaces []string
 }
 
 // Image is one unique running image, keyed by the digest the kubelet reports.
@@ -96,12 +99,15 @@ func ListRunningImages(ctx context.Context, o Options) (*Inventory, error) {
 	nsSeen := map[string]bool{}
 	pods := 0
 	for _, ns := range namespaces {
+		if contains(o.ExcludeNamespaces, ns) {
+			continue
+		}
 		list, err := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("listing pods in %q: %w", nsOrAll(ns), err)
 		}
 		for _, pod := range list.Items {
-			if pod.Status.Phase != corev1.PodRunning {
+			if pod.Status.Phase != corev1.PodRunning || contains(o.ExcludeNamespaces, pod.Namespace) {
 				continue
 			}
 			pods++
@@ -210,4 +216,22 @@ func nsOrAll(ns string) string {
 		return "all namespaces"
 	}
 	return ns
+}
+
+// ListContexts returns every context name in the kubeconfig (sorted) and the
+// current-context, which may be empty.
+func ListContexts(kubeconfig string) (names []string, current string, err error) {
+	rules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if kubeconfig != "" {
+		rules.ExplicitPath = kubeconfig
+	}
+	raw, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, &clientcmd.ConfigOverrides{}).RawConfig()
+	if err != nil {
+		return nil, "", err
+	}
+	for name := range raw.Contexts {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, raw.CurrentContext, nil
 }
