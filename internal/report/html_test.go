@@ -43,7 +43,7 @@ func fixtureReport() *Report {
 			Err: os.ErrClosed},
 	}
 	kevSet := kev.Set{"CVE-2026-31789": true}
-	return Build(inv, results, kevSet)
+	return Build(inv, results, kevSet, BuildOptions{})
 }
 
 func TestRenderHTML(t *testing.T) {

@@ -4,15 +4,25 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/lockdep/stackradar-cli/cmd"
+	"github.com/lockdep/stackradar-cli/internal/report"
 )
 
+// Exit codes follow grype: 0 clean, 1 error, 2 --fail-on threshold reached.
 func main() {
-	if err := cmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
-		os.Exit(1)
+	err := cmd.Execute()
+	if err == nil {
+		return
 	}
+	var thr *report.ThresholdError
+	if errors.As(err, &thr) {
+		fmt.Fprintln(os.Stderr, thr.Error())
+		os.Exit(2)
+	}
+	fmt.Fprintln(os.Stderr, "error:", err)
+	os.Exit(1)
 }

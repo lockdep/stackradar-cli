@@ -56,11 +56,17 @@ stackradar scan                          # pick a kubeconfig context (current on
 stackradar scan --context prod -n payments -n checkout
 stackradar scan -N kube-system -N monitoring    # everything except those namespaces
 stackradar scan --min-severity high      # quieter per-image detail
-stackradar scan --json > report.json     # everything, machine-readable
+stackradar scan -o json > report.json    # everything, machine-readable
+stackradar scan -o html --file report.html   # self-contained HTML you can share internally
 stackradar scan --serve                  # open the report in your browser (localhost only)
-stackradar scan -o report.html           # self-contained HTML you can share internally
+stackradar scan --fail-on high           # CI gate: exit 2 if anything ≥ high is running
+stackradar scan --fail-on kev --only-fixed   # exit 2 only on exploited CVEs that have a fix
+stackradar scan -q -o json               # no progress on stderr, just the report
 stackradar scan --no-kev                 # skip the cisa.gov lookup
 ```
+
+Exit codes follow grype: `0` clean, `1` error, `2` the `--fail-on` threshold was met.
+`-q` silences progress and notices on stderr; `-v` turns on debug logging.
 
 `--serve` renders the same data as a small dashboard — filter by namespace, severity, fixable,
 KEV; click an image for its findings — served from `127.0.0.1` by the binary itself. Everything
@@ -127,11 +133,11 @@ go test ./...
 
 `GOTOOLCHAIN=auto` lets Go fetch the version pinned in `go.mod` if your local one is older.
 Progress goes to stderr and the report to stdout, so `2>/dev/null` leaves just the report;
-`--json` shows every finding, the table truncates at 15 per image.
+`-o json` shows every finding, the table truncates at 15 per image.
 
 ## Contributing
 
-Bug reports with a redacted `--json` output are the most useful thing you can send.
+Bug reports with a redacted `-o json` output are the most useful thing you can send.
 `go vet ./...`, `go test ./...` and `go build ./...` are the whole CI.
 
 ## License

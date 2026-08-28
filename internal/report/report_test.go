@@ -69,7 +69,7 @@ func TestBuild(t *testing.T) {
 		{Image: img("unreach", "a/p2"), Err: errors.New("401"), Unreachable: true},
 		{Image: img("broken"), Err: errors.New("boom")},
 	}
-	rep := Build(inv, results, kev.Set{"CVE-KEV": true})
+	rep := Build(inv, results, kev.Set{"CVE-KEV": true}, BuildOptions{})
 
 	if rep.Context != "ctx" || rep.PodCount != 5 || !rep.KEVChecked {
 		t.Fatalf("header: %+v", rep)
@@ -119,14 +119,14 @@ func TestBuild(t *testing.T) {
 }
 
 func TestBuildWithoutKEV(t *testing.T) {
-	rep := Build(&k8s.Inventory{}, []ImageResult{{Image: img("x"), Findings: []scan.Finding{finding("CVE-KEV", 9.5)}}}, nil)
+	rep := Build(&k8s.Inventory{}, []ImageResult{{Image: img("x"), Findings: []scan.Finding{finding("CVE-KEV", 9.5)}}}, nil, BuildOptions{})
 	if rep.KEVChecked || rep.Totals.KEV != 0 || len(rep.KEV) != 0 || rep.Images[0].Findings[0].KEV {
 		t.Fatalf("nil KEV set must not flag anything: %+v", rep)
 	}
 }
 
 func TestWriteJSON(t *testing.T) {
-	rep := Build(&k8s.Inventory{Context: "c"}, []ImageResult{{Image: img("x"), Err: errors.New("boom")}}, nil)
+	rep := Build(&k8s.Inventory{Context: "c"}, []ImageResult{{Image: img("x"), Err: errors.New("boom")}}, nil, BuildOptions{})
 	var buf bytes.Buffer
 	if err := WriteJSON(&buf, rep); err != nil {
 		t.Fatal(err)
@@ -161,7 +161,7 @@ func TestWriteTable(t *testing.T) {
 		{Image: img("reg/private:1", "a/priv"), Err: errors.New("401"), Unreachable: true},
 		{Image: img("reg/broken:1", "a/broken"), Err: errors.New("boom")},
 	}
-	rep := Build(inv, results, kev.Set{"CVE-LOW": true})
+	rep := Build(inv, results, kev.Set{"CVE-LOW": true}, BuildOptions{})
 
 	out := tableFor(t, rep, "high")
 	for _, want := range []string{
@@ -189,7 +189,7 @@ func TestWriteTable(t *testing.T) {
 	}
 
 	// Nothing above the bar and no KEV: no findings section at all.
-	quiet := Build(inv, []ImageResult{{Image: img("x"), Findings: []scan.Finding{{ID: "CVE-LOW", CVSS: 2}}}}, kev.Set{})
+	quiet := Build(inv, []ImageResult{{Image: img("x"), Findings: []scan.Finding{{ID: "CVE-LOW", CVSS: 2}}}}, kev.Set{}, BuildOptions{})
 	out = tableFor(t, quiet, "high")
 	if strings.Contains(out, "Findings (") || !strings.Contains(out, "Nothing in CISA") {
 		t.Errorf("quiet table\n%s", out)
@@ -201,7 +201,7 @@ func TestWriteTableTruncatesLongLists(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		fs = append(fs, scan.Finding{ID: "CVE-" + strings.Repeat("9", 2) + string(rune('a'+i)), CVSS: 9.0})
 	}
-	rep := Build(&k8s.Inventory{}, []ImageResult{{Image: img("x"), Findings: fs}}, nil)
+	rep := Build(&k8s.Inventory{}, []ImageResult{{Image: img("x"), Findings: fs}}, nil, BuildOptions{})
 	out := tableFor(t, rep, "high")
 	if !strings.Contains(out, "… 5 more") {
 		t.Errorf("expected truncation notice\n%s", out)
@@ -232,5 +232,44 @@ func TestHelpers(t *testing.T) {
 	}
 	if got := displaySeverity("unknown"); got != "Unscored" {
 		t.Error(got)
+	}
+}
+
+func TestOnlyFixed(t *testing.T) {
+	fs := []scan.Finding{
+		{ID: "CVE-A", CVSS: 9, Fixed: "1.2.3"},
+		{ID: "CVE-B", CVSS: 9},
+	}
+	rep := Build(&k8s.Inventory{}, []ImageResult{{Image: img("x"), Findings: fs}}, nil, BuildOptions{OnlyFixed: true})
+	if rep.Totals.Critical != 1 || len(rep.Images[0].Findings) != 1 || rep.Images[0].Findings[0].ID != "CVE-A" {
+		t.Fatalf("only-fixed should keep just CVE-A, got %+v", rep.Images[0].Findings)
+	}
+	if !rep.OnlyFixed {
+		t.Fatal("OnlyFixed not recorded on report")
+	}
+}
+
+func TestCheckThreshold(t *testing.T) {
+	rep := &Report{Totals: Counts{High: 2, Low: 5, KEV: 0}}
+	if err := CheckThreshold(rep, ""); err != nil {
+		t.Fatal("empty threshold must pass")
+	}
+	if err := CheckThreshold(rep, "critical"); err != nil {
+		t.Fatalf("no criticals, want nil, got %v", err)
+	}
+	err := CheckThreshold(rep, "high")
+	var te *ThresholdError
+	if !errors.As(err, &te) || te.Count != 2 {
+		t.Fatalf("want ThresholdError count 2, got %v", err)
+	}
+	if err := CheckThreshold(rep, "low"); !errors.As(err, &te) || te.Count != 7 {
+		t.Fatalf("low should count high+low=7, got %v", err)
+	}
+	if err := CheckThreshold(rep, "kev"); err != nil {
+		t.Fatalf("no KEV, want nil, got %v", err)
+	}
+	rep.Totals.KEV = 1
+	if err := CheckThreshold(rep, "kev"); !errors.As(err, &te) || te.Threshold != "kev" {
+		t.Fatalf("want kev ThresholdError, got %v", err)
 	}
 }

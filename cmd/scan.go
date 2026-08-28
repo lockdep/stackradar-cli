@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"runtime"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/lockdep/stackradar-cli/internal/k8s"
 	"github.com/lockdep/stackradar-cli/internal/kev"
@@ -28,11 +30,13 @@ var scanOpts struct {
 	excludeNS   []string
 	allNS       bool
 	concurrency int
-	jsonOut     bool
 	noKEV       bool
 	timeout     time.Duration
 	minSeverity string
-	output      string
+	format      string
+	file        string
+	failOn      string
+	onlyFixed   bool
 	serve       bool
 	port        int
 	noOpen      bool
@@ -57,11 +61,13 @@ func init() {
 	f.StringSliceVarP(&scanOpts.namespaces, "namespace", "n", nil, "namespace(s) to scan (repeatable; default: all)")
 	f.StringSliceVarP(&scanOpts.excludeNS, "exclude-namespace", "N", nil, "namespace(s) to skip (repeatable; e.g. -N kube-system)")
 	f.IntVar(&scanOpts.concurrency, "concurrency", runtime.NumCPU(), "images to pull+scan in parallel")
-	f.BoolVar(&scanOpts.jsonOut, "json", false, "emit machine-readable JSON instead of the table")
 	f.BoolVar(&scanOpts.noKEV, "no-kev", false, "skip the CISA Known Exploited Vulnerabilities lookup")
 	f.DurationVar(&scanOpts.timeout, "timeout", 15*time.Minute, "overall time limit")
 	f.StringVar(&scanOpts.minSeverity, "min-severity", "low", "lowest severity to show per image: critical|high|medium|low")
-	f.StringVarP(&scanOpts.output, "output", "o", "", "also write a self-contained HTML report to this file")
+	f.StringVarP(&scanOpts.format, "output", "o", "table", "report format: table|json|html")
+	f.StringVar(&scanOpts.file, "file", "", "write the report here instead of stdout (e.g. --file report.html)")
+	f.StringVarP(&scanOpts.failOn, "fail-on", "f", "", "exit 2 if any finding is at or above this severity: critical|high|medium|low, or kev")
+	f.BoolVar(&scanOpts.onlyFixed, "only-fixed", false, "only report vulnerabilities that have a fixed version")
 	f.BoolVar(&scanOpts.serve, "serve", false, "open the report in your browser (served from localhost, nothing leaves the machine)")
 	f.IntVar(&scanOpts.port, "port", 8000, "port for --serve (0 picks a free one)")
 	f.BoolVar(&scanOpts.noOpen, "no-open", false, "with --serve: print the URL instead of launching a browser")
@@ -75,14 +81,26 @@ func runScan(cmd *cobra.Command, _ []string) error {
 	defer stop()
 
 	stderr := cmd.ErrOrStderr()
+	stdout := cmd.OutOrStdout()
 	if err := report.ValidateSeverity(scanOpts.minSeverity); err != nil {
 		return err
 	}
+	if scanOpts.failOn != "" && scanOpts.failOn != "kev" {
+		if err := report.ValidateSeverity(scanOpts.failOn); err != nil {
+			return fmt.Errorf("--fail-on: %w (or kev)", err)
+		}
+	}
+	switch scanOpts.format {
+	case "table", "json", "html":
+	default:
+		return fmt.Errorf("unknown output format %q (want table|json|html)", scanOpts.format)
+	}
 
 	// No --context: let the user pick one when we can ask, preselecting the
-	// kubeconfig's current-context so Enter is the fast path.
-	if scanOpts.kubeContext == "" && !scanOpts.jsonOut {
-		if f, ok := stderr.(*os.File); ok && ui.CanPrompt(f) {
+	// kubeconfig's current-context so Enter is the fast path. Never prompt
+	// when the report is being piped somewhere — that is a script.
+	if scanOpts.kubeContext == "" && !rootOpts.quiet {
+		if f, ok := stderr.(*os.File); ok && ui.CanPrompt(f) && isTTY(stdout) {
 			names, current, err := k8s.ListContexts(scanOpts.kubeconfig)
 			if err != nil {
 				return fmt.Errorf("reading kubeconfig: %w", err)
@@ -102,7 +120,7 @@ func runScan(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	prog := ui.New(stderr, scanOpts.jsonOut)
+	prog := ui.New(stderr, rootOpts.quiet)
 	prog.OnInterrupt(stop)
 	defer prog.Close()
 
@@ -139,7 +157,7 @@ func runScan(cmd *cobra.Command, _ []string) error {
 	}
 
 	// 3. Pull + scan each image.
-	scanner := scan.New()
+	scanner := scan.New(rootOpts.verbose)
 	results := make([]report.ImageResult, len(inv.Images))
 	sem := make(chan struct{}, max(1, scanOpts.concurrency))
 	var wg sync.WaitGroup
@@ -173,52 +191,70 @@ func runScan(cmd *cobra.Command, _ []string) error {
 		return ctx.Err()
 	}
 
-	rep := report.Build(inv, results, kevSet)
+	rep := report.Build(inv, results, kevSet, report.BuildOptions{OnlyFixed: scanOpts.onlyFixed})
 
 	var page []byte
-	if scanOpts.output != "" || scanOpts.serve {
+	if scanOpts.format == "html" || scanOpts.serve {
 		page, err = report.RenderHTML(rep, report.HTMLOptions{Version: version})
 		if err != nil {
 			return err
 		}
 	}
-	if scanOpts.output != "" {
-		if err := os.WriteFile(scanOpts.output, page, 0o644); err != nil {
-			return fmt.Errorf("writing %s: %w", scanOpts.output, err)
-		}
-		prog.Note("Wrote %s", scanOpts.output)
-	}
 
-	// Freeze the task list before the report goes to stdout.
+	// Freeze the task list before the report goes out.
 	prog.Close()
 
-	if scanOpts.jsonOut {
-		if err := report.WriteJSON(cmd.OutOrStdout(), rep); err != nil {
-			return err
+	out := stdout
+	if scanOpts.file != "" {
+		f, err := os.Create(scanOpts.file)
+		if err != nil {
+			return fmt.Errorf("writing %s: %w", scanOpts.file, err)
 		}
-	} else {
-		fmt.Fprintln(stderr)
-		if err := report.WriteTable(cmd.OutOrStdout(), rep, scanOpts.minSeverity); err != nil {
-			return err
+		defer f.Close()
+		out = f
+	}
+	switch scanOpts.format {
+	case "json":
+		err = report.WriteJSON(out, rep)
+	case "html":
+		_, err = out.Write(page)
+	default:
+		if scanOpts.file == "" && !rootOpts.quiet {
+			fmt.Fprintln(stderr)
 		}
+		err = report.WriteTable(out, rep, scanOpts.minSeverity)
+	}
+	if err != nil {
+		return err
+	}
+	if scanOpts.file != "" && !rootOpts.quiet {
+		fmt.Fprintf(stderr, "Wrote %s\n", scanOpts.file)
 	}
 
 	if !scanOpts.serve {
-		return nil
+		return report.CheckThreshold(rep, scanOpts.failOn)
 	}
 	// The scan is done; the overall --timeout should not tear the page down.
 	stop()
 	cancel()
 	serveCtx, serveStop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer serveStop()
-	return serve.Run(serveCtx, page, scanOpts.port, func(url string) {
+	if err := serve.Run(serveCtx, page, scanOpts.port, func(url string) {
 		fmt.Fprintf(stderr, "\nReport at %s  (Ctrl-C to stop)\n", url)
 		if !scanOpts.noOpen {
 			if err := serve.OpenBrowser(url); err != nil {
 				fmt.Fprintf(stderr, "could not open a browser (%v) — open the URL yourself\n", err)
 			}
 		}
-	})
+	}); err != nil {
+		return err
+	}
+	return report.CheckThreshold(rep, scanOpts.failOn)
+}
+
+func isTTY(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	return ok && term.IsTerminal(int(f.Fd()))
 }
 
 func outcome(r report.ImageResult) ui.Outcome {

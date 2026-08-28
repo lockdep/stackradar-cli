@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 
@@ -41,9 +42,14 @@ func (f Finding) CVEs() []string {
 
 type Scanner struct{}
 
-func New() *Scanner {
-	// osv-scanner logs progress via its own slog handler; keep our stdout/stderr clean.
-	osvscanner.SetLogger(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError + 1}))
+// New returns a scanner. osv-scanner logs through its own slog handler; it is
+// discarded unless verbose, in which case it goes to stderr.
+func New(verbose bool) *Scanner {
+	if verbose {
+		osvscanner.SetLogger(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	} else {
+		osvscanner.SetLogger(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError + 1}))
+	}
 	return &Scanner{}
 }
 
