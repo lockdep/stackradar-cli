@@ -96,10 +96,22 @@ to an auditor (the EU CRA's 24-hour reporting obligation applies from 11 Septemb
 This CLI is the sixty-second, zero-trust-required version of the same question. Use it,
 keep it, never sign up — that's fine.
 
+## Developing
+
+```sh
+git clone https://github.com/lockdep/stackradar-cli && cd stackradar-cli
+GOTOOLCHAIN=auto go build -o stackradar . && ./stackradar scan -n kube-system
+go test ./...
+```
+
+`GOTOOLCHAIN=auto` lets Go fetch the version pinned in `go.mod` if your local one is older.
+Progress goes to stderr and the report to stdout, so `2>/dev/null` leaves just the report;
+`--json` shows every finding, the table truncates at 15 per image.
+
 ## Contributing
 
 Bug reports with a redacted `--json` output are the most useful thing you can send.
-`go build ./...` and `go test ./...` are the whole CI.
+`go vet ./...`, `go test ./...` and `go build ./...` are the whole CI.
 
 ## License
 
