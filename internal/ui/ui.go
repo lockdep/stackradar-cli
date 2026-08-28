@@ -336,8 +336,12 @@ func (m *model) View() string {
 
 	// 1. inventory
 	if s.listed {
-		row(ok, "Listed running images", styleHint.Render(fmt.Sprintf("[%d images · %d pods · %d namespaces · %s]",
-			s.images, s.pods, s.nss, s.context)))
+		if s.context == "" {
+			row(ok, "Resolved images", styleHint.Render(fmt.Sprintf("[%d from --image]", s.images)))
+		} else {
+			row(ok, "Listed running images", styleHint.Render(fmt.Sprintf("[%d images · %d pods · %d namespaces · %s]",
+				s.images, s.pods, s.nss, s.context)))
+		}
 	} else {
 		row(spin, "Listing running images", styleHint.Render(elapsed(s.listStart)))
 	}
@@ -471,6 +475,10 @@ func (p *plain) ImagesListed(images, pods, nss int, ctx string) {
 		p.state = newState()
 	}
 	p.state.imagesListed(images, pods, nss, ctx)
+	if ctx == "" {
+		p.printf("Scanning %d image(s)", images)
+		return
+	}
 	p.printf("Found %d unique images across %d pods in %d namespaces (context %s)", images, pods, nss, ctx)
 }
 
