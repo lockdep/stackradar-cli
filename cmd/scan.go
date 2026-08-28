@@ -65,7 +65,7 @@ func init() {
 	f.IntVar(&scanOpts.concurrency, "concurrency", runtime.NumCPU(), "images to pull+scan in parallel")
 	f.BoolVar(&scanOpts.noKEV, "no-kev", false, "skip the CISA Known Exploited Vulnerabilities lookup")
 	f.DurationVar(&scanOpts.timeout, "timeout", 15*time.Minute, "overall time limit")
-	f.StringVar(&scanOpts.minSeverity, "min-severity", "low", "lowest severity to show per image: critical|high|medium|low")
+	f.StringVar(&scanOpts.minSeverity, "min-severity", "low", "lowest severity to show per image: critical|high|medium|low, or none for the summary only")
 	f.StringVarP(&scanOpts.format, "output", "o", "table", "report format: table|json|html")
 	f.StringVar(&scanOpts.file, "file", "", "write the report here instead of stdout (e.g. --file report.html)")
 	f.StringVarP(&scanOpts.failOn, "fail-on", "f", "", "exit 2 if any finding is at or above this severity: critical|high|medium|low, or kev")

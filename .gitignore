@@ -1,3 +1,5 @@
 dist/
 stackradar
 *.tar
+demo/
+.DS_Store

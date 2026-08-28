@@ -37,6 +37,9 @@ func ParseSeverity(s string) (Severity, bool) {
 }
 
 func ValidateSeverity(s string) error {
+	if s == "none" {
+		return nil
+	}
 	if _, ok := ParseSeverity(s); !ok {
 		return fmt.Errorf("unknown severity %q (want critical|high|medium|low)", s)
 	}
