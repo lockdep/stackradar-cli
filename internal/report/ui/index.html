@@ -63,6 +63,9 @@
   }
   /* Same mark as stackradar.io: an accent dot beside the bold wordmark. */
   .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; letter-spacing: -.025em; }
+  a.brand { color: var(--ink); text-decoration: none; }
+  a.brand:hover { color: var(--ink); text-decoration: none; }
+  a.brand:hover .dot { background: var(--accent-hover); }
   .brand .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--accent); display: inline-block; }
   .brand .tag { font-weight: 500; color: var(--ink-muted); font-size: 12px; padding: 1px 6px; border: 1px solid var(--edge); border-radius: 999px; }
   .topbar .spacer { flex: 1; }
@@ -222,11 +225,11 @@
 <script id="report-data" type="application/json">__DATA__</script>
 
 <header class="topbar">
-  <div class="brand">
+  <a class="brand" href="https://stackradar.io/?utm_source=cli&utm_medium=report&utm_campaign=brand" target="_blank" rel="noopener" title="stackradar.io">
     <span class="dot" aria-hidden="true"></span>
     StackRadar
     <span class="tag">local scan</span>
-  </div>
+  </a>
   <span class="ctx" id="ctx" title="kubeconfig context"><span class="helm">⎈</span><span class="pfx">context:</span><span id="ctx-name"></span></span>
   <div class="spacer"></div>
   <button class="btn icon" id="theme" title="Toggle theme" aria-label="Toggle theme">
