@@ -1,5 +1,5 @@
 <h1>
-  <img src=".github/logo-heading.svg" alt="" width="32" height="40" align="top"> StackRadar
+  <img src=".github/logo-heading.svg" alt="" width="32" height="40" align="top"> StackRadar CLI
 </h1>
 
 **See which of your running Kubernetes pods contain known vulnerabilities — from your laptop, in about a minute, without installing anything in the cluster.**
