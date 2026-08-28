@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>stackradar scan — __TITLE__</title>
+<title>StackRadar scan — __TITLE__</title>
 <script>
   // Theme before first paint: explicit choice in localStorage wins over the OS preference.
   try {
@@ -61,8 +61,9 @@
     background: var(--surface-raised); border-bottom: 1px solid var(--edge);
     display: flex; align-items: center; gap: 16px; padding: 0 24px; height: 52px;
   }
-  .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; letter-spacing: -.01em; }
-  .brand svg { width: 20px; height: 20px; }
+  /* Same mark as stackradar.io: an accent dot beside the bold wordmark. */
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; letter-spacing: -.025em; }
+  .brand .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--accent); display: inline-block; }
   .brand .tag { font-weight: 500; color: var(--ink-muted); font-size: 12px; padding: 1px 6px; border: 1px solid var(--edge); border-radius: 999px; }
   .topbar .spacer { flex: 1; }
   .btn {
@@ -185,10 +186,8 @@
 
 <header class="topbar">
   <div class="brand">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6" opacity=".55"/><circle cx="12" cy="12" r="2"/><path d="M12 2v10l7 4"/>
-    </svg>
-    stackradar
+    <span class="dot" aria-hidden="true"></span>
+    StackRadar
     <span class="tag">local scan</span>
   </div>
   <div class="spacer"></div>
@@ -311,7 +310,7 @@
 
   // ---- header ----
   document.getElementById('title').textContent = 'Context ' + R.context;
-  document.title = 'stackradar scan — ' + R.context;
+  document.title = 'StackRadar scan — ' + R.context;
   var when = payload.generated_at ? new Date(payload.generated_at) : null;
   document.getElementById('sub').innerHTML =
     '<span><b>' + n(R.images.length) + '</b> ' + plural(R.images.length, 'image', 'images') + '</span>' +
