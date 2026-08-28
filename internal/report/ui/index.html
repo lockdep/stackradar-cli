@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>stackradar scan — __TITLE__</title>
+<script>
+  // Theme before first paint: explicit choice in localStorage wins over the OS preference.
+  try {
+    var t = localStorage.getItem('stackradar-theme');
+    if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+    else if (matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.setAttribute('data-theme', 'dark');
+  } catch (e) {}
+</script>
+<style>
+  /* Palette: GitHub Primer, the same primitives the StackRadar dashboard uses. */
+  :root {
+    --surface: #f6f8fa; --surface-raised: #ffffff; --surface-hover: #eaeef2; --surface-inset: #eaeef2;
+    --edge: #d1d9e0; --edge-strong: #818b98;
+    --ink: #1f2328; --ink-secondary: #424a53; --ink-muted: #59636e; --ink-faint: #818b98; --on-emphasis: #ffffff;
+    --accent: #0969da; --accent-emphasis: #0969da; --accent-hover: #0550ae; --accent-subtle: #ddf4ff; --accent-muted: rgba(84,174,255,.4);
+    --danger: #d1242f; --danger-emphasis: #cf222e; --danger-subtle: #ffebe9; --danger-muted: rgba(255,129,130,.4);
+    --severe: #bc4c00; --severe-emphasis: #bc4c00; --severe-subtle: #fff1e5;
+    --attention: #9a6700; --attention-emphasis: #9a6700; --attention-subtle: #fff8c5;
+    --success: #1a7f37; --success-emphasis: #1f883d; --success-subtle: #dafbe1; --success-muted: rgba(74,194,107,.4);
+    --neutral-emphasis: #59636e; --neutral-subtle: #818b981f;
+    --btn-primary: #1f883d; --btn-primary-hover: #1c8139;
+    --sev-critical: var(--danger-emphasis); --sev-high: var(--severe-emphasis); --sev-medium: var(--attention-emphasis); --sev-low: var(--neutral-emphasis);
+    --shadow: 0 1px 0 rgba(31,35,40,.04);
+  }
+  :root[data-theme="dark"] {
+    --surface: #0d1117; --surface-raised: #161b22; --surface-hover: #21262d; --surface-inset: #010409;
+    --edge: #3d444d; --edge-strong: #656c76;
+    --ink: #f0f6fc; --ink-secondary: #c9d1d9; --ink-muted: #9198a1; --ink-faint: #656c76; --on-emphasis: #ffffff;
+    --accent: #4493f8; --accent-emphasis: #1f6feb; --accent-hover: #388bfd; --accent-subtle: #388bfd1a; --accent-muted: #388bfd66;
+    --danger: #f85149; --danger-emphasis: #da3633; --danger-subtle: #f851491a; --danger-muted: rgba(248,81,73,.4);
+    --severe: #db6d28; --severe-emphasis: #bd561d; --severe-subtle: #db6d281a;
+    --attention: #d29922; --attention-emphasis: #9e6a03; --attention-subtle: #bb800926;
+    --success: #3fb950; --success-emphasis: #238636; --success-subtle: #2ea04326; --success-muted: #2ea04366;
+    --neutral-emphasis: #656c76; --neutral-subtle: #656c7633;
+    --btn-primary: #238636; --btn-primary-hover: #29903b;
+    --shadow: none;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--surface); color: var(--ink);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  code, .mono { font-family: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace; font-size: 12.5px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+
+  /* ---- layout ---- */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--surface-raised); border-bottom: 1px solid var(--edge);
+    display: flex; align-items: center; gap: 16px; padding: 0 24px; height: 52px;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; letter-spacing: -.01em; }
+  .brand svg { width: 20px; height: 20px; }
+  .brand .tag { font-weight: 500; color: var(--ink-muted); font-size: 12px; padding: 1px 6px; border: 1px solid var(--edge); border-radius: 999px; }
+  .topbar .spacer { flex: 1; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+    border: 1px solid var(--edge); border-radius: 6px; background: var(--surface-raised);
+    font-weight: 500; font-size: 13px; color: var(--ink); white-space: nowrap;
+  }
+  .btn:hover { background: var(--surface-hover); text-decoration: none; }
+  .btn.primary { background: var(--btn-primary); border-color: transparent; color: var(--on-emphasis); }
+  .btn.primary:hover { background: var(--btn-primary-hover); }
+  .btn.icon { width: 30px; padding: 0; justify-content: center; }
+  .btn.icon svg { width: 16px; height: 16px; }
+
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; }
+  .sub { color: var(--ink-muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .sub b { color: var(--ink-secondary); font-weight: 500; }
+
+  .banner {
+    margin-top: 20px; border: 1px solid var(--danger-muted); background: var(--danger-subtle);
+    border-radius: 6px; padding: 12px 16px;
+  }
+  .banner h2 { margin: 0 0 6px; font-size: 14px; color: var(--danger); font-weight: 600; }
+  .banner ul { margin: 0; padding-left: 0; list-style: none; }
+  .banner li { display: grid; grid-template-columns: max-content 1fr; gap: 16px; padding: 3px 0; font-size: 13px; }
+  .banner li .mono { font-weight: 600; }
+  .banner .w { color: var(--ink-secondary); }
+  .ok { margin-top: 20px; color: var(--success); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 20px; }
+  .tile {
+    text-align: left; background: var(--surface-raised); border: 1px solid var(--edge); border-radius: 6px;
+    padding: 12px 14px; box-shadow: var(--shadow); position: relative;
+  }
+  .tile:hover { border-color: var(--edge-strong); }
+  .tile[aria-pressed="true"] { border-color: var(--accent-emphasis); box-shadow: 0 0 0 1px var(--accent-emphasis) inset; }
+  .tile .k { font-size: 12px; color: var(--ink-muted); font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .tile .k i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .tile .v { font-size: 26px; font-weight: 600; line-height: 1.2; margin-top: 4px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .tile .h { font-size: 11px; color: var(--ink-faint); margin-top: 2px; }
+
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--edge); margin-top: 28px; }
+  .tab { padding: 8px 12px; margin-bottom: -1px; border-bottom: 2px solid transparent; color: var(--ink-muted); font-weight: 500; }
+  .tab:hover { color: var(--ink); }
+  .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: #fd8c73; }
+  .tab .n { color: var(--ink-muted); font-weight: 400; margin-left: 6px; font-size: 12px; background: var(--neutral-subtle); padding: 0 6px; border-radius: 999px; }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0 12px; }
+  .toolbar input[type=search], .toolbar select {
+    height: 30px; padding: 0 10px; border: 1px solid var(--edge); border-radius: 6px;
+    background: var(--surface-raised); color: var(--ink); font: inherit; font-size: 13px;
+  }
+  .toolbar input[type=search] { min-width: 260px; flex: 1; max-width: 420px; }
+  .toolbar label.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink-secondary); }
+  .toolbar .count { color: var(--ink-muted); font-size: 12px; margin-left: auto; }
+
+  .card { background: var(--surface-raised); border: 1px solid var(--edge); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 500; color: var(--ink-muted); font-size: 12px; padding: 8px 12px; border-bottom: 1px solid var(--edge); background: var(--surface); white-space: nowrap; user-select: none; }
+  th.sortable { cursor: pointer; }
+  th.sortable:hover { color: var(--ink); }
+  th .arrow { opacity: .5; font-size: 10px; margin-left: 3px; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--edge); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr.row { cursor: pointer; }
+  tbody tr.row:hover { background: var(--surface-hover); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.muted { color: var(--ink-muted); }
+  .empty { padding: 32px; text-align: center; color: var(--ink-muted); }
+
+  .sq { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 24px; font-size: 12px; font-weight: 500; color: var(--on-emphasis); font-variant-numeric: tabular-nums; }
+  .sq.zero { background: var(--surface-hover); color: var(--ink-secondary); }
+  .sq.critical { background: var(--sev-critical); } .sq.high { background: var(--sev-high); } .sq.medium { background: var(--sev-medium); } .sq.low { background: var(--sev-low); }
+  .sqs { display: inline-flex; }
+
+  .badge { display: inline-flex; align-items: center; padding: 1px 4px; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; color: var(--on-emphasis); white-space: nowrap; }
+  .badge.critical { background: var(--sev-critical); } .badge.high { background: var(--sev-high); } .badge.medium { background: var(--sev-medium); } .badge.low { background: var(--sev-low); }
+  .badge.unknown { background: transparent; color: var(--ink-muted); border: 1px dashed var(--edge-strong); }
+  .badge.kev { background: var(--danger-subtle); color: var(--danger); border: 1px solid var(--danger-muted); font-weight: 600; }
+  .badge.status { background: var(--neutral-subtle); color: var(--ink-muted); text-transform: none; letter-spacing: 0; border-radius: 999px; padding: 1px 8px; }
+  .kevstar { color: var(--danger); font-weight: 700; margin-left: 4px; }
+
+  .img-name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .img-name .repo { font-weight: 500; color: var(--ink); word-break: break-all; }
+  .img-name .digest { color: var(--ink-faint); font-size: 11.5px; }
+  .chev { display: inline-block; width: 14px; color: var(--ink-faint); transition: transform .12s; }
+  tr.open .chev { transform: rotate(90deg); }
+
+  tr.detail td { padding: 0; background: var(--surface); }
+  .detail-inner { padding: 12px 16px 16px 40px; }
+  .detail-inner .pods { font-size: 12px; color: var(--ink-muted); margin-bottom: 8px; }
+  .detail-inner .pods code { color: var(--ink-secondary); }
+  .detail-inner table { background: var(--surface-raised); border: 1px solid var(--edge); border-radius: 6px; font-size: 12.5px; }
+  .detail-inner th { background: var(--surface); }
+  .fix { color: var(--success); }
+  .nofix { color: var(--ink-faint); }
+
+  .cta {
+    margin-top: 32px; border: 1px solid var(--accent-muted); background: var(--accent-subtle);
+    border-radius: 6px; padding: 20px 24px; display: grid; grid-template-columns: 1fr auto; gap: 16px 32px; align-items: center;
+  }
+  .cta h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+  .cta p { margin: 0; color: var(--ink-secondary); font-size: 13px; }
+  .cta ul { margin: 10px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 20px; font-size: 13px; color: var(--ink-secondary); }
+  .cta li::before { content: "→ "; color: var(--accent); }
+  .cta .actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+  .cta .actions small { color: var(--ink-muted); font-size: 11.5px; text-align: center; }
+  @media (max-width: 720px) { .cta { grid-template-columns: 1fr; } .banner li { grid-template-columns: 1fr; gap: 2px; } }
+
+  .foot { margin: 28px 0 8px; color: var(--ink-faint); font-size: 12px; line-height: 1.6; }
+  .foot code { font-size: 11.5px; }
+  .warn { margin-top: 14px; font-size: 13px; color: var(--ink-secondary); display: flex; gap: 8px; align-items: flex-start; }
+  .warn::before { content: "⚠"; color: var(--attention); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<script id="report-data" type="application/json">__DATA__</script>
+
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6" opacity=".55"/><circle cx="12" cy="12" r="2"/><path d="M12 2v10l7 4"/>
+    </svg>
+    stackradar
+    <span class="tag">local scan</span>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn icon" id="theme" title="Toggle theme" aria-label="Toggle theme">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+  </button>
+  <a class="btn primary" id="cta-top" href="https://stackradar.io/?utm_source=cli&utm_medium=report&utm_campaign=serve" target="_blank" rel="noopener">Monitor continuously</a>
+</header>
+
+<main class="wrap">
+  <h1 id="title"></h1>
+  <div class="sub" id="sub"></div>
+
+  <section id="kev"></section>
+
+  <section class="tiles" id="tiles"></section>
+
+  <div id="warnings"></div>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="images" aria-selected="true">Images <span class="n" id="n-images"></span></button>
+    <button class="tab" role="tab" data-tab="vulns" aria-selected="false">Vulnerabilities <span class="n" id="n-vulns"></span></button>
+  </nav>
+
+  <div class="toolbar">
+    <input type="search" id="q" placeholder="Filter by image, package, CVE, pod…" autocomplete="off">
+    <select id="ns"><option value="">All namespaces</option></select>
+    <select id="minsev">
+      <option value="0">Any severity</option>
+      <option value="4">Critical only</option>
+      <option value="3">High and above</option>
+      <option value="2">Medium and above</option>
+    </select>
+    <label class="chk"><input type="checkbox" id="fixable"> Fix available</label>
+    <label class="chk"><input type="checkbox" id="kevonly"> KEV only</label>
+    <span class="count" id="count"></span>
+  </div>
+
+  <section class="card" id="panel-images">
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th style="width:14px"></th>
+          <th>Image</th>
+          <th>Severity</th>
+          <th class="num">KEV</th>
+          <th class="num">Pods</th>
+          <th>Status</th>
+        </tr></thead>
+        <tbody id="images-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card hidden" id="panel-vulns">
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th class="sortable" data-sort="id">Advisory<span class="arrow"></span></th>
+          <th class="sortable" data-sort="sev">Severity<span class="arrow"></span></th>
+          <th class="sortable" data-sort="pkg">Package<span class="arrow"></span></th>
+          <th>Installed</th>
+          <th>Fixed in</th>
+          <th class="sortable num" data-sort="images">Images<span class="arrow"></span></th>
+          <th class="sortable num" data-sort="pods">Pods<span class="arrow"></span></th>
+        </tr></thead>
+        <tbody id="vulns-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div>
+      <h2>This is a snapshot. Your cluster isn't.</h2>
+      <p>Run it again tomorrow and today's clean image may carry a new CVE. StackRadar keeps a continuous SBOM of every workload and re-checks it the moment an advisory lands.</p>
+      <ul>
+        <li>History and trends per cluster, workload and image</li>
+        <li>Alerts when a new KEV or critical appears in something you run</li>
+        <li>Scans images this laptop can't pull, using the cluster's own pull secrets</li>
+        <li>A dated record you can hand an auditor (CRA 24-hour reporting)</li>
+      </ul>
+    </div>
+    <div class="actions">
+      <a class="btn primary" href="https://stackradar.io/?utm_source=cli&utm_medium=report&utm_campaign=serve_cta" target="_blank" rel="noopener">Set up continuous monitoring</a>
+      <a class="btn" href="https://stackradar.io/docs?utm_source=cli&utm_medium=report" target="_blank" rel="noopener">Read the docs</a>
+      <small>Free tier · no card · 2-minute Helm install</small>
+    </div>
+  </section>
+
+  <p class="foot" id="foot"></p>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var payload = JSON.parse(document.getElementById('report-data').textContent);
+  var R = payload.report;
+  var SEV = { critical: 4, high: 3, medium: 2, low: 1, unknown: 0 };
+  var SEV_LABEL = { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low', unknown: 'Unscored' };
+  var UNSCORED_HINT = 'The advisory has no CVSS score at the source; it is counted, not hidden.';
+
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function n(x) { return (x || 0).toLocaleString(); }
+  function plural(c, one, many) { return c === 1 ? one : many; }
+  function osvLink(id) { return 'https://osv.dev/vulnerability/' + encodeURIComponent(id); }
+  function nsOf(w) { return w.split('/')[0]; }
+  function displayName(img) {
+    var repo = img.ref.split('@')[0];
+    var digest = img.digest ? img.digest.replace(/^sha256:/, '').slice(0, 12) : '';
+    var tags = (img.tags || []).filter(function (t) { return t.indexOf('@') < 0; });
+    return { repo: tags.length && tags[0].indexOf(':') > 0 ? tags[0] : repo, digest: digest };
+  }
+
+  // ---- theme ----
+  document.getElementById('theme').addEventListener('click', function () {
+    var cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', cur);
+    try { localStorage.setItem('stackradar-theme', cur); } catch (e) {}
+  });
+
+  // ---- header ----
+  document.getElementById('title').textContent = 'Context ' + R.context;
+  document.title = 'stackradar scan — ' + R.context;
+  var when = payload.generated_at ? new Date(payload.generated_at) : null;
+  document.getElementById('sub').innerHTML =
+    '<span><b>' + n(R.images.length) + '</b> ' + plural(R.images.length, 'image', 'images') + '</span>' +
+    '<span><b>' + n(R.pod_count) + '</b> ' + plural(R.pod_count, 'pod', 'pods') + '</span>' +
+    '<span><b>' + n(R.namespaces.length) + '</b> ' + plural(R.namespaces.length, 'namespace', 'namespaces') + '</span>' +
+    (when ? '<span>scanned <b>' + esc(when.toLocaleString()) + '</b></span>' : '') +
+    '<span>stackradar-cli <b>' + esc(payload.version || 'dev') + '</b></span>';
+
+  // ---- KEV banner ----
+  var kevEl = document.getElementById('kev');
+  if (R.kev_checked && R.kev && R.kev.length) {
+    kevEl.innerHTML = '<div class="banner"><h2>★ ' + R.kev.length + ' ' + plural(R.kev.length, 'vulnerability', 'vulnerabilities') +
+      ' in CISA’s Known Exploited Vulnerabilities catalogue — actively exploited in the wild</h2><ul>' +
+      R.kev.map(function (h) {
+        return '<li><span class="mono"><a href="' + osvLink(h.cve) + '" target="_blank" rel="noopener">' + esc(h.cve) + '</a> · ' + esc(h.package) + '</span>' +
+          '<span class="w">' + h.workloads.slice(0, 6).map(esc).join(', ') + (h.workloads.length > 6 ? ', +' + (h.workloads.length - 6) + ' more' : '') + '</span></li>';
+      }).join('') + '</ul></div>';
+  } else if (R.kev_checked) {
+    kevEl.innerHTML = '<div class="ok">✓ Nothing in CISA’s Known Exploited Vulnerabilities catalogue.</div>';
+  }
+
+  // ---- warnings ----
+  var warn = '';
+  if (R.unreachable_images) warn += '<div class="warn">' + R.unreachable_images + ' ' + plural(R.unreachable_images, 'image lives', 'images live') + ' in a registry this machine cannot pull from (no credentials, or private network). An in-cluster scanner using the cluster’s own pull secrets covers those — that is what StackRadar does.</div>';
+  if (R.errored_images) warn += '<div class="warn">' + R.errored_images + ' ' + plural(R.errored_images, 'image', 'images') + ' failed to scan — see the status column, or run with <code>--json</code> for the error text.</div>';
+  document.getElementById('warnings').innerHTML = warn;
+
+  // ---- flatten findings ----
+  // vulns: one row per (advisory id, package, version), aggregated over the images it appears in.
+  var imageRows = R.images.map(function (ir, i) {
+    var d = displayName(ir.image);
+    var pods = ir.image.workloads || [];
+    return { i: i, ir: ir, repo: d.repo, digest: d.digest, pods: pods, ns: pods.map(nsOf), findings: ir.findings || [] };
+  });
+  var vulnMap = {};
+  imageRows.forEach(function (row) {
+    row.findings.forEach(function (f) {
+      var k = f.id + ' ' + f.package + ' ' + f.version;
+      var v = vulnMap[k];
+      if (!v) { v = vulnMap[k] = { f: f, images: [], pods: {} }; }
+      v.images.push(row);
+      row.pods.forEach(function (p) { v.pods[p] = 1; });
+    });
+  });
+  var vulnRows = Object.keys(vulnMap).map(function (k) { var v = vulnMap[k]; v.podCount = Object.keys(v.pods).length; return v; });
+
+  // ---- tiles ----
+  var T = R.totals;
+  var tiles = [
+    { key: 'critical', label: 'Critical', v: T.critical, color: 'var(--sev-critical)' },
+    { key: 'high', label: 'High', v: T.high, color: 'var(--sev-high)' },
+    { key: 'medium', label: 'Medium', v: T.medium, color: 'var(--sev-medium)' },
+    { key: 'low', label: 'Low', v: T.low, color: 'var(--sev-low)' },
+    { key: 'unknown', label: 'Unscored', v: T.unknown, color: 'transparent', hint: 'no CVSS at source' },
+    { key: 'kev', label: 'Known exploited', v: T.kev, color: 'var(--danger)', hint: R.kev_checked ? 'CISA KEV' : 'not checked (--no-kev)' }
+  ];
+  document.getElementById('tiles').innerHTML = tiles.map(function (t) {
+    return '<button class="tile" data-tile="' + t.key + '" aria-pressed="false" title="Click to filter">' +
+      '<span class="k"><i style="background:' + t.color + (t.key === 'unknown' ? ';border:1px dashed var(--edge-strong)' : '') + '"></i>' + t.label + '</span>' +
+      '<span class="v">' + n(t.v) + '</span>' + (t.hint ? '<span class="h">' + esc(t.hint) + '</span>' : '') + '</button>';
+  }).join('');
+
+  // ---- filters ----
+  var q = document.getElementById('q'), nsSel = document.getElementById('ns'), minSel = document.getElementById('minsev'),
+      fixChk = document.getElementById('fixable'), kevChk = document.getElementById('kevonly');
+  R.namespaces.slice().sort().forEach(function (ns) { var o = document.createElement('option'); o.value = ns; o.textContent = ns; nsSel.appendChild(o); });
+  var onlySev = null; // from tiles: exact severity bucket
+  var openImages = {};
+  var tab = 'images';
+  var sort = { key: 'sev', dir: -1 };
+
+  function matchFinding(f, text) {
+    var s = SEV[f.severity] || 0;
+    var min = +minSel.value;
+    if (onlySev && onlySev !== 'kev' && f.severity !== onlySev) return false;
+    if (min && (s < min)) return false;
+    if ((kevChk.checked || onlySev === 'kev') && !f.kev) return false;
+    if (fixChk.checked && !f.fixed) return false;
+    if (text) {
+      var hay = (f.id + ' ' + (f.aliases || []).join(' ') + ' ' + f.package + ' ' + f.version + ' ' + (f.summary || '')).toLowerCase();
+      if (hay.indexOf(text) < 0) return false;
+    }
+    return true;
+  }
+  function matchImageText(row, text) {
+    if (!text) return true;
+    return (row.repo + ' ' + row.ir.image.ref + ' ' + row.pods.join(' ')).toLowerCase().indexOf(text) >= 0;
+  }
+  function anyFilterActive() { return q.value || nsSel.value || +minSel.value || fixChk.checked || kevChk.checked || onlySev; }
+
+  function render() {
+    var text = q.value.trim().toLowerCase();
+    var ns = nsSel.value;
+
+    // Images tab
+    var shownImages = 0, body = '';
+    imageRows.forEach(function (row) {
+      if (ns && row.ns.indexOf(ns) < 0) return;
+      var imgText = matchImageText(row, text);
+      var rows = row.findings.filter(function (f) { return matchFinding(f, imgText ? '' : text); });
+      // Image matches by its own name (then show findings with the other filters), or by a finding.
+      if (!imgText && !rows.length) return;
+      if (anyFilterActive() && !rows.length && (row.ir.findings || []).length) return;
+      shownImages++;
+      var c = row.ir.counts, isOpen = !!openImages[row.i];
+      var status = row.ir.unreachable ? '<span class="badge status">not reachable from here</span>'
+        : row.ir.error ? '<span class="badge status" title="' + esc(row.ir.error) + '">scan failed</span>' : '';
+      body += '<tr class="row' + (isOpen ? ' open' : '') + '" data-i="' + row.i + '">' +
+        '<td><span class="chev">▶</span></td>' +
+        '<td><div class="img-name"><span class="repo mono">' + esc(row.repo) + '</span>' + (row.digest ? '<span class="digest mono">sha256:' + esc(row.digest) + '</span>' : '') + '</div></td>' +
+        '<td><span class="sqs">' + sq(c.critical, 'critical') + sq(c.high, 'high') + sq(c.medium, 'medium') + sq(c.low, 'low') + '</span>' +
+          (c.unknown ? ' <span class="badge unknown" title="' + UNSCORED_HINT + '">' + c.unknown + ' unscored</span>' : '') + '</td>' +
+        '<td class="num">' + (c.kev ? '<span class="badge kev">★ ' + c.kev + '</span>' : '<span class="muted">–</span>') + '</td>' +
+        '<td class="num">' + row.pods.length + '</td>' +
+        '<td>' + status + '</td></tr>';
+      if (isOpen) {
+        body += '<tr class="detail"><td colspan="6"><div class="detail-inner">' +
+          '<div class="pods">Running in: ' + row.pods.slice(0, 12).map(function (p) { return '<code>' + esc(p) + '</code>'; }).join(', ') + (row.pods.length > 12 ? ', +' + (row.pods.length - 12) + ' more' : '') + '</div>' +
+          (rows.length ? '<table><thead><tr><th>Advisory</th><th>Severity</th><th>Package</th><th>Installed</th><th>Fixed in</th></tr></thead><tbody>' +
+            rows.map(function (f) { return findingRow(f); }).join('') + '</tbody></table>'
+            : '<div class="empty">' + (row.ir.error ? esc(row.ir.error) : 'No findings match the current filters.') + '</div>') +
+          '</div></td></tr>';
+      }
+    });
+    document.getElementById('images-body').innerHTML = body || '<tr><td colspan="6" class="empty">No images match.</td></tr>';
+
+    // Vulnerabilities tab
+    var vrows = vulnRows.filter(function (v) {
+      var imgs = v.images.filter(function (row) { return (!ns || row.ns.indexOf(ns) >= 0) && (matchImageText(row, text)); });
+      var byImage = imgs.length > 0;
+      if (!matchFinding(v.f, byImage ? '' : text)) return false;
+      if (ns && !v.images.some(function (row) { return row.ns.indexOf(ns) >= 0; })) return false;
+      if (text && !byImage && !matchFinding(v.f, text)) return false;
+      return true;
+    });
+    vrows.sort(function (a, b) {
+      var d = sort.dir, x, y;
+      switch (sort.key) {
+        case 'id': x = a.f.id; y = b.f.id; return x < y ? -d : x > y ? d : 0;
+        case 'pkg': x = a.f.package; y = b.f.package; return x < y ? -d : x > y ? d : 0;
+        case 'images': return (a.images.length - b.images.length) * d;
+        case 'pods': return (a.podCount - b.podCount) * d;
+        default:
+          if (a.f.kev !== b.f.kev) return a.f.kev ? -1 : 1;
+          x = (SEV[a.f.severity] || 0) * 100 + a.f.cvss; y = (SEV[b.f.severity] || 0) * 100 + b.f.cvss;
+          return (x - y) * d;
+      }
+    });
+    document.getElementById('vulns-body').innerHTML = vrows.length ? vrows.map(function (v) {
+      var f = v.f;
+      return '<tr>' +
+        '<td class="mono"><a href="' + osvLink(f.id) + '" target="_blank" rel="noopener" title="' + esc(f.summary || '') + '">' + esc(f.id) + '</a>' + (f.kev ? '<span class="kevstar" title="Known exploited (CISA KEV)">★</span>' : '') +
+          (f.aliases && f.aliases.length ? '<div class="digest mono" style="color:var(--ink-faint);font-size:11px">' + f.aliases.slice(0, 3).map(esc).join(' · ') + '</div>' : '') + '</td>' +
+        '<td>' + sevBadge(f) + '</td>' +
+        '<td class="mono">' + esc(f.package) + ' <span class="muted">' + esc(f.ecosystem || '') + '</span></td>' +
+        '<td class="mono">' + esc(f.version) + '</td>' +
+        '<td class="mono">' + (f.fixed ? '<span class="fix">' + esc(f.fixed) + '</span>' : '<span class="nofix">none</span>') + '</td>' +
+        '<td class="num" title="' + esc(v.images.map(function (r) { return r.repo; }).join('\n')) + '">' + v.images.length + '</td>' +
+        '<td class="num">' + v.podCount + '</td></tr>';
+    }).join('') : '<tr><td colspan="7" class="empty">No vulnerabilities match.</td></tr>';
+
+    document.getElementById('n-images').textContent = R.images.length;
+    document.getElementById('n-vulns').textContent = vulnRows.length;
+    document.getElementById('count').textContent = tab === 'images'
+      ? shownImages + ' of ' + R.images.length + ' images'
+      : vrows.length + ' of ' + vulnRows.length + ' vulnerabilities';
+    document.querySelectorAll('th.sortable').forEach(function (th) {
+      th.querySelector('.arrow').textContent = th.dataset.sort === sort.key ? (sort.dir < 0 ? '▼' : '▲') : '';
+    });
+  }
+  function sq(v, s) { return '<span class="sq ' + (v ? s : 'zero') + '" title="' + SEV_LABEL[s] + '">' + v + '</span>'; }
+  function sevBadge(f) {
+    var s = f.severity in SEV ? f.severity : 'unknown';
+    return '<span class="badge ' + s + '"' + (s === 'unknown' ? ' title="' + UNSCORED_HINT + '"' : '') + '>' + (s === 'unknown' ? 'Unscored' : s) + '</span>' +
+      (f.cvss ? ' <span class="muted mono">' + f.cvss.toFixed(1) + '</span>' : '');
+  }
+  function findingRow(f) {
+    return '<tr><td class="mono"><a href="' + osvLink(f.id) + '" target="_blank" rel="noopener" title="' + esc(f.summary || '') + '">' + esc(f.id) + '</a>' + (f.kev ? '<span class="kevstar" title="Known exploited (CISA KEV)">★</span>' : '') + '</td>' +
+      '<td>' + sevBadge(f) + '</td>' +
+      '<td class="mono">' + esc(f.package) + ' <span class="muted">' + esc(f.ecosystem || '') + '</span></td>' +
+      '<td class="mono">' + esc(f.version) + '</td>' +
+      '<td class="mono">' + (f.fixed ? '<span class="fix">' + esc(f.fixed) + '</span>' : '<span class="nofix">none</span>') + '</td></tr>';
+  }
+
+  // ---- events ----
+  [q, nsSel, minSel, fixChk, kevChk].forEach(function (el) { el.addEventListener('input', render); el.addEventListener('change', render); });
+  document.getElementById('tiles').addEventListener('click', function (e) {
+    var b = e.target.closest('.tile'); if (!b) return;
+    var k = b.dataset.tile;
+    onlySev = onlySev === k ? null : k;
+    document.querySelectorAll('.tile').forEach(function (t) { t.setAttribute('aria-pressed', String(t.dataset.tile === onlySev)); });
+    render();
+  });
+  document.getElementById('images-body').addEventListener('click', function (e) {
+    if (e.target.closest('a')) return;
+    var tr = e.target.closest('tr.row'); if (!tr) return;
+    var i = tr.dataset.i;
+    if (openImages[i]) delete openImages[i]; else openImages[i] = 1;
+    render();
+  });
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.addEventListener('click', function () {
+      tab = t.dataset.tab;
+      document.querySelectorAll('.tab').forEach(function (x) { x.setAttribute('aria-selected', String(x === t)); });
+      document.getElementById('panel-images').classList.toggle('hidden', tab !== 'images');
+      document.getElementById('panel-vulns').classList.toggle('hidden', tab !== 'vulns');
+      render();
+    });
+  });
+  document.querySelectorAll('th.sortable').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var k = th.dataset.sort;
+      if (sort.key === k) sort.dir = -sort.dir; else { sort.key = k; sort.dir = (k === 'id' || k === 'pkg') ? 1 : -1; }
+      render();
+    });
+  });
+
+  document.getElementById('foot').innerHTML =
+    'Point-in-time snapshot generated on this machine by <code>stackradar scan</code>. Nothing about your cluster was sent to StackRadar: ' +
+    'image pulls went to your registries, package names/versions to <code>api.osv.dev</code>' + (R.kev_checked ? ', one GET to <code>cisa.gov</code>' : '') + '. ' +
+    'Severity is the CVSS base score OSV publishes; advisories without one are shown as <em>Unscored</em>, not dropped. ' +
+    'Images are worst-first (KEV, then critical, then high). Click an image to expand its findings.';
+
+  render();
+})();
+</script>
+</body>
+</html>

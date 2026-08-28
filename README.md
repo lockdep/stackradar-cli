@@ -43,8 +43,15 @@ stackradar scan                          # current kubeconfig context, all names
 stackradar scan --context prod -n payments -n checkout
 stackradar scan --min-severity high      # quieter per-image detail
 stackradar scan --json > report.json     # everything, machine-readable
+stackradar scan --serve                  # open the report in your browser (localhost only)
+stackradar scan -o report.html           # self-contained HTML you can share internally
 stackradar scan --no-kev                 # skip the cisa.gov lookup
 ```
+
+`--serve` renders the same data as a small dashboard — filter by namespace, severity, fixable,
+KEV; click an image for its findings — served from `127.0.0.1` by the binary itself. Everything
+is embedded, so the page makes no network requests. `--no-open` prints the URL instead of
+launching a browser; `--port 0` picks a free port.
 
 It needs `list pods` on the namespaces you scan — the same permission as `kubectl get pods`.
 
@@ -58,7 +65,7 @@ It needs `list pods` on the namespaces you scan — the same permission as `kube
 4. Generates the package inventory and matches it against [OSV](https://osv.dev) using the
    embedded [osv-scanner](https://github.com/google/osv-scanner) library.
 5. Cross-references every CVE with [CISA's Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalogue (cached locally for 24 h).
-6. Prints a table, worst image first.
+6. Prints a table, worst image first — or, with `--serve` / `--output`, a self-contained HTML report.
 
 ### What leaves your machine
 

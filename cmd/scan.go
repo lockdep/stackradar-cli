@@ -17,6 +17,7 @@ import (
 	"github.com/lockdep/stackradar-cli/internal/pull"
 	"github.com/lockdep/stackradar-cli/internal/report"
 	"github.com/lockdep/stackradar-cli/internal/scan"
+	"github.com/lockdep/stackradar-cli/internal/serve"
 )
 
 var scanOpts struct {
@@ -29,6 +30,10 @@ var scanOpts struct {
 	noKEV       bool
 	timeout     time.Duration
 	minSeverity string
+	output      string
+	serve       bool
+	port        int
+	noOpen      bool
 }
 
 var scanCmd = &cobra.Command{
@@ -53,6 +58,10 @@ func init() {
 	f.BoolVar(&scanOpts.noKEV, "no-kev", false, "skip the CISA Known Exploited Vulnerabilities lookup")
 	f.DurationVar(&scanOpts.timeout, "timeout", 15*time.Minute, "overall time limit")
 	f.StringVar(&scanOpts.minSeverity, "min-severity", "low", "lowest severity to show per image: critical|high|medium|low")
+	f.StringVarP(&scanOpts.output, "output", "o", "", "also write a self-contained HTML report to this file")
+	f.BoolVar(&scanOpts.serve, "serve", false, "open the report in your browser (served from localhost, nothing leaves the machine)")
+	f.IntVar(&scanOpts.port, "port", 8000, "port for --serve (0 picks a free one)")
+	f.BoolVar(&scanOpts.noOpen, "no-open", false, "with --serve: print the URL instead of launching a browser")
 	rootCmd.AddCommand(scanCmd)
 }
 
@@ -137,11 +146,48 @@ func runScan(cmd *cobra.Command, _ []string) error {
 	}
 
 	rep := report.Build(inv, results, kevSet)
-	if scanOpts.jsonOut {
-		return report.WriteJSON(cmd.OutOrStdout(), rep)
+
+	var page []byte
+	if scanOpts.output != "" || scanOpts.serve {
+		page, err = report.RenderHTML(rep, report.HTMLOptions{Version: version})
+		if err != nil {
+			return err
+		}
 	}
-	fmt.Fprintln(stderr)
-	return report.WriteTable(cmd.OutOrStdout(), rep, scanOpts.minSeverity)
+	if scanOpts.output != "" {
+		if err := os.WriteFile(scanOpts.output, page, 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", scanOpts.output, err)
+		}
+		progress("Wrote %s", scanOpts.output)
+	}
+
+	if scanOpts.jsonOut {
+		if err := report.WriteJSON(cmd.OutOrStdout(), rep); err != nil {
+			return err
+		}
+	} else {
+		fmt.Fprintln(stderr)
+		if err := report.WriteTable(cmd.OutOrStdout(), rep, scanOpts.minSeverity); err != nil {
+			return err
+		}
+	}
+
+	if !scanOpts.serve {
+		return nil
+	}
+	// The scan is done; the overall --timeout should not tear the page down.
+	stop()
+	cancel()
+	serveCtx, serveStop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer serveStop()
+	return serve.Run(serveCtx, page, scanOpts.port, func(url string) {
+		fmt.Fprintf(stderr, "\nReport at %s  (Ctrl-C to stop)\n", url)
+		if !scanOpts.noOpen {
+			if err := serve.OpenBrowser(url); err != nil {
+				fmt.Fprintf(stderr, "could not open a browser (%v) — open the URL yourself\n", err)
+			}
+		}
+	})
 }
 
 func statusSuffix(r report.ImageResult) string {
