@@ -1,0 +1,51 @@
+version: 2
+project_name: stackradar
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: .
+    binary: stackradar
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/lockdep/stackradar-cli/cmd.version={{.Version}}
+      - -X github.com/lockdep/stackradar-cli/cmd.commit={{.ShortCommit}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args: ["sign-blob", "--yes", "--output-certificate=${certificate}", "--output-signature=${signature}", "${artifact}"]
+    artifacts: checksum
+
+brews:
+  - repository:
+      owner: lockdep
+      name: homebrew-tap
+    directory: Formula
+    homepage: https://stackradar.io
+    description: "See which running Kubernetes pods contain known vulnerabilities — from your laptop"
+    license: Apache-2.0
+    test:
+      system: "#{bin}/stackradar --version"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^chore:", "^ci:"]

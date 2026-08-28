@@ -1,0 +1,106 @@
+# stackradar
+
+**See which of your running Kubernetes pods contain known vulnerabilities — from your laptop, in about a minute, without installing anything in the cluster.**
+
+```
+$ stackradar scan
+
+39 images · 61 pods · 8 namespaces · context prod-eu
+
+IMAGE                                                 CRIT  HIGH  MED  LOW  KEV  PODS
+docker.io/grafana/grafana:12.4.2@83749231c383         14    51    66   5    -    1
+ghcr.io/dexidp/dex:v2.43.0@b08a58c9731c               19    28    30   5    -    1
+quay.io/argoproj/argocd:v3.2.3@9ab6baab65a6           17    23    37   4    -    7
+registry.internal/payments-api:9f1fd70@957da44ee38f   ·     ·     ·    ·    ·    3     not reachable from here
+...
+
+Total: 167 critical · 446 high · 546 medium · 66 low
+
+★ 1 vulnerability in CISA's Known Exploited catalogue — actively exploited in the wild:
+   CVE-2026-31789  openssl  →  monitoring/grafana-fbfc6595c-62kln, ingress/controller-7c9d-x2ll1
+```
+
+It answers the question every platform team gets asked at 09:00 when a CVE lands:
+**"are we affected?"** — using what is *actually running* (container digests reported by
+the kubelet), not what a manifest says.
+
+## Install
+
+```sh
+brew install lockdep/tap/stackradar
+# or
+curl -fsSL https://raw.githubusercontent.com/lockdep/stackradar-cli/main/install.sh | sh
+# or
+go install github.com/lockdep/stackradar-cli@latest
+```
+
+Single static binary. No Docker daemon, no `osv-scanner` install, no cluster-side agent.
+
+## Usage
+
+```sh
+stackradar scan                          # current kubeconfig context, all namespaces
+stackradar scan --context prod -n payments -n checkout
+stackradar scan --min-severity high      # quieter per-image detail
+stackradar scan --json > report.json     # everything, machine-readable
+stackradar scan --no-kev                 # skip the cisa.gov lookup
+```
+
+It needs `list pods` on the namespaces you scan — the same permission as `kubectl get pods`.
+
+## What it does, exactly
+
+1. Lists running pods through your kubeconfig (via client-go — `kubectl` itself is not required).
+2. Takes the **image digest** from each container status (`imageID`), so a `:latest` tag on
+   your laptop can never disagree with what the node is running. Deduplicates by digest.
+3. Pulls each unique image with the same credentials `docker` / `crane` would use
+   (`~/.docker/config.json`, credential helpers, cloud keychains).
+4. Generates the package inventory and matches it against [OSV](https://osv.dev) using the
+   embedded [osv-scanner](https://github.com/google/osv-scanner) library.
+5. Cross-references every CVE with [CISA's Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalogue (cached locally for 24 h).
+6. Prints a table, worst image first.
+
+### What leaves your machine
+
+- Image pulls go to **your** registries.
+- Package lists (name + version, nothing else) are queried against **api.osv.dev**.
+- One GET to **cisa.gov** for the KEV catalogue.
+
+Nothing is sent to StackRadar. There is no telemetry. The code is short — read it.
+
+### Images it cannot reach
+
+If an image lives in a registry your laptop has no credentials for (or that is only reachable
+from inside the cluster), the row says `not reachable from here` instead of guessing. An
+in-cluster agent that uses the cluster's own pull secrets is what solves that — which is
+what [StackRadar](https://stackradar.io) is.
+
+## Limitations (honest ones)
+
+- Point in time. Run it again tomorrow and yesterday's clean image may have a new CVE — nothing
+  here watches for that.
+- Go binaries built without module version info (`(devel)`) are skipped rather than
+  reported against every advisory ever filed for them.
+- Severity is the CVSS base score OSV publishes; advisories without one are counted as
+  "unscored", not silently dropped into "low".
+- Pulls the `linux/amd64` variant of multi-arch images. Package contents are the same
+  across architectures in practice, but the digest you see is the manifest-list digest.
+- Results will differ slightly from what a syft/grype or Trivy run reports. Different
+  inventories, different matchers — this is normal.
+
+## Why this exists
+
+[StackRadar](https://stackradar.io) keeps a continuous SBOM of every workload across your
+clusters and re-checks it the moment a new advisory lands, with a dated history you can hand
+to an auditor (the EU CRA's 24-hour reporting obligation applies from 11 September 2026).
+This CLI is the sixty-second, zero-trust-required version of the same question. Use it,
+keep it, never sign up — that's fine.
+
+## Contributing
+
+Bug reports with a redacted `--json` output are the most useful thing you can send.
+`go build ./...` and `go test ./...` are the whole CI.
+
+## License
+
+Apache-2.0.
