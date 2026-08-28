@@ -37,11 +37,24 @@ It answers the question every platform team gets asked at 09:00 when a CVE lands
 **"are we affected?"** — using what is *actually running* (container digests reported by
 the kubelet), not what a manifest says.
 
-## Install
+## Try it in ten seconds — no cluster needed
 
 ```sh
 brew install lockdep/tap/stackradar
-# or
+stackradar scan --image nginx:1.25
+```
+
+That pulls one image with your local registry credentials, matches its packages against OSV
+and CISA KEV, and prints the same table you see above — just for one image. Point it at a
+cluster and it does that for every image actually running there:
+
+```sh
+stackradar scan            # every running image in the current kubeconfig context
+```
+
+Other ways to install:
+
+```sh
 curl -fsSL https://raw.githubusercontent.com/lockdep/stackradar-cli/main/install.sh | sh
 # or
 go install github.com/lockdep/stackradar-cli@latest
@@ -53,6 +66,7 @@ Single static binary. No Docker daemon, no `osv-scanner` install, no cluster-sid
 
 ```sh
 stackradar scan                          # pick a kubeconfig context (current one preselected), all namespaces
+stackradar scan --image ghcr.io/you/api:v1.2   # one or more images, no kubeconfig
 stackradar scan --context prod -n payments -n checkout
 stackradar scan -N kube-system -N monitoring    # everything except those namespaces
 stackradar scan --min-severity high      # quieter per-image detail

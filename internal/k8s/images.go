@@ -60,6 +60,29 @@ type Inventory struct {
 	Images     []Image  `json:"images"`
 }
 
+// InventoryFromRefs builds an inventory from explicit image references
+// (the --image path): no cluster, no workloads, Context left empty.
+func InventoryFromRefs(refs []string) *Inventory {
+	inv := &Inventory{}
+	seen := map[string]bool{}
+	for _, r := range refs {
+		if r == "" || seen[r] {
+			continue
+		}
+		seen[r] = true
+		img := Image{Ref: r}
+		if i := strings.Index(r, "@sha256:"); i >= 0 {
+			img.Digest = r[i+1:]
+			if j := strings.LastIndex(r[:i], ":"); j > strings.LastIndex(r[:i], "/") {
+				img.Tags = []string{r[j+1 : i]}
+				img.Ref = r[:j] + r[i:]
+			}
+		}
+		inv.Images = append(inv.Images, img)
+	}
+	return inv
+}
+
 func ListRunningImages(ctx context.Context, o Options) (*Inventory, error) {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if o.Kubeconfig != "" {

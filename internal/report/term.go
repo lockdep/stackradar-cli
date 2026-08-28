@@ -101,14 +101,21 @@ func WriteTable(w io.Writer, rep *Report, minSev string) error {
 	min, _ := ParseSeverity(minSev)
 	st := newStyles(w)
 
-	fmt.Fprintf(w, "%s\n\n", st.title.Render(fmt.Sprintf("%d images · %d pods · %d namespaces · context %s",
-		len(rep.Images), rep.PodCount, len(rep.Namespaces), rep.Context)))
+	if rep.Context == "" {
+		fmt.Fprintf(w, "%s\n\n", st.title.Render(fmt.Sprintf("%d image%s", len(rep.Images), plural(len(rep.Images), "", "s"))))
+	} else {
+		fmt.Fprintf(w, "%s\n\n", st.title.Render(fmt.Sprintf("%d images · %d pods · %d namespaces · context %s",
+			len(rep.Images), rep.PodCount, len(rep.Namespaces), rep.Context)))
+	}
 
 	// --- summary table ------------------------------------------------------
 	t := newTable(w, []string{"Image", "Critical", "High", "Medium", "Low", "KEV", "Pods", ""})
 	for _, ir := range rep.Images {
 		name := ir.Image.Display()
-		pods := fmt.Sprint(len(ir.Image.Workloads))
+		pods := "" // empty when no cluster; the column then auto-hides
+		if len(ir.Image.Workloads) > 0 {
+			pods = fmt.Sprint(len(ir.Image.Workloads))
+		}
 		dot := st.hint.Render("·")
 		switch {
 		case ir.Unreachable:
@@ -196,7 +203,7 @@ func WriteTable(w io.Writer, rep *Report, minSev string) error {
 		const limit = 15
 		for i, f := range rows {
 			if i == limit {
-				_ = ft.Append("", st.hint.Render(fmt.Sprintf("… %d more (--json for the full list)", len(rows)-limit)), "", "", "", "", "", "", "")
+				_ = ft.Append("", st.hint.Render(fmt.Sprintf("… %d more (-o json for the full list)", len(rows)-limit)), "", "", "", "", "", "", "")
 				break
 			}
 			cvss := st.hint.Render("N/A")

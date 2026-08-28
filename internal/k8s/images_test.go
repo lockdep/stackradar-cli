@@ -27,3 +27,26 @@ func TestDisplay(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestInventoryFromRefs(t *testing.T) {
+	inv := InventoryFromRefs([]string{
+		"nginx:1.25",
+		"nginx:1.25",
+		"ghcr.io/foo/bar:v1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		"",
+	})
+	if len(inv.Images) != 2 {
+		t.Fatalf("want 2 unique images, got %d", len(inv.Images))
+	}
+	if inv.Images[0].Ref != "nginx:1.25" || inv.Images[0].Digest != "" {
+		t.Errorf("plain tag mangled: %+v", inv.Images[0])
+	}
+	d := inv.Images[1]
+	if d.Ref != "ghcr.io/foo/bar@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" ||
+		d.Tags[0] != "v1" || d.Digest[:7] != "sha256:" {
+		t.Errorf("digest ref not split: %+v", d)
+	}
+	if inv.Context != "" {
+		t.Error("context must stay empty for --image inventories")
+	}
+}

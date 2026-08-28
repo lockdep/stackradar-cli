@@ -26,6 +26,7 @@ import (
 var scanOpts struct {
 	kubeconfig  string
 	kubeContext string
+	images      []string
 	namespaces  []string
 	excludeNS   []string
 	allNS       bool
@@ -58,6 +59,7 @@ func init() {
 	f := scanCmd.Flags()
 	f.StringVar(&scanOpts.kubeconfig, "kubeconfig", "", "path to kubeconfig (default: $KUBECONFIG or ~/.kube/config)")
 	f.StringVar(&scanOpts.kubeContext, "context", "", "kubeconfig context to use (default: interactive picker on a terminal, else current-context)")
+	f.StringSliceVar(&scanOpts.images, "image", nil, "scan these image references instead of a cluster (repeatable; no kubeconfig needed)")
 	f.StringSliceVarP(&scanOpts.namespaces, "namespace", "n", nil, "namespace(s) to scan (repeatable; default: all)")
 	f.StringSliceVarP(&scanOpts.excludeNS, "exclude-namespace", "N", nil, "namespace(s) to skip (repeatable; e.g. -N kube-system)")
 	f.IntVar(&scanOpts.concurrency, "concurrency", runtime.NumCPU(), "images to pull+scan in parallel")
@@ -99,7 +101,7 @@ func runScan(cmd *cobra.Command, _ []string) error {
 	// No --context: let the user pick one when we can ask, preselecting the
 	// kubeconfig's current-context so Enter is the fast path. Never prompt
 	// when the report is being piped somewhere — that is a script.
-	if scanOpts.kubeContext == "" && !rootOpts.quiet {
+	if scanOpts.kubeContext == "" && len(scanOpts.images) == 0 && !rootOpts.quiet {
 		if f, ok := stderr.(*os.File); ok && ui.CanPrompt(f) && isTTY(stdout) {
 			names, current, err := k8s.ListContexts(scanOpts.kubeconfig)
 			if err != nil {
@@ -120,20 +122,26 @@ func runScan(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	var err error
 	prog := ui.New(stderr, rootOpts.quiet)
 	prog.OnInterrupt(stop)
 	defer prog.Close()
 
-	// 1. What is running?
-	inv, err := k8s.ListRunningImages(ctx, k8s.Options{
-		Kubeconfig:        scanOpts.kubeconfig,
-		Context:           scanOpts.kubeContext,
-		Namespaces:        scanOpts.namespaces,
-		ExcludeNamespaces: scanOpts.excludeNS,
-	})
-	if err != nil {
-		prog.Close()
-		return fmt.Errorf("listing running images: %w", err)
+	// 1. What is running? (or, with --image, what was asked for)
+	var inv *k8s.Inventory
+	if len(scanOpts.images) > 0 {
+		inv = k8s.InventoryFromRefs(scanOpts.images)
+	} else {
+		inv, err = k8s.ListRunningImages(ctx, k8s.Options{
+			Kubeconfig:        scanOpts.kubeconfig,
+			Context:           scanOpts.kubeContext,
+			Namespaces:        scanOpts.namespaces,
+			ExcludeNamespaces: scanOpts.excludeNS,
+		})
+		if err != nil {
+			prog.Close()
+			return fmt.Errorf("listing running images: %w", err)
+		}
 	}
 	if len(inv.Images) == 0 {
 		prog.Close()

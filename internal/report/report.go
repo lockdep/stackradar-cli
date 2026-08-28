@@ -123,10 +123,58 @@ type Report struct {
 	Unreachable int           `json:"unreachable_images"`
 	Errored     int           `json:"errored_images"`
 	KEVChecked  bool          `json:"kev_checked"`
+	OnlyFixed   bool          `json:"only_fixed,omitempty"`
 }
 
-func Build(inv *k8s.Inventory, results []ImageResult, kevSet kev.Set) *Report {
-	rep := &Report{Context: inv.Context, Namespaces: inv.Namespaces, PodCount: inv.PodCount, KEVChecked: kevSet != nil}
+// ThresholdError is returned when --fail-on is met; main maps it to exit 2.
+type ThresholdError struct {
+	Threshold string
+	Count     int
+}
+
+func (e *ThresholdError) Error() string {
+	if e.Threshold == "kev" {
+		return fmt.Sprintf("%d finding(s) in CISA KEV (--fail-on kev)", e.Count)
+	}
+	return fmt.Sprintf("%d finding(s) at or above %s severity (--fail-on %s)", e.Count, e.Threshold, e.Threshold)
+}
+
+// CheckThreshold returns a *ThresholdError if rep has findings at or above
+// failOn ("" disables; "kev" means any KEV hit).
+func CheckThreshold(rep *Report, failOn string) error {
+	if failOn == "" {
+		return nil
+	}
+	if failOn == "kev" {
+		if rep.Totals.KEV > 0 {
+			return &ThresholdError{Threshold: "kev", Count: rep.Totals.KEV}
+		}
+		return nil
+	}
+	min, ok := ParseSeverity(failOn)
+	if !ok {
+		return fmt.Errorf("unknown severity %q", failOn)
+	}
+	n := 0
+	t := rep.Totals
+	for s, c := range map[Severity]int{Critical: t.Critical, High: t.High, Medium: t.Medium, Low: t.Low} {
+		if s >= min {
+			n += c
+		}
+	}
+	if n > 0 {
+		return &ThresholdError{Threshold: min.String(), Count: n}
+	}
+	return nil
+}
+
+type BuildOptions struct {
+	// OnlyFixed drops findings without a known fixed version.
+	OnlyFixed bool
+}
+
+func Build(inv *k8s.Inventory, results []ImageResult, kevSet kev.Set, opts BuildOptions) *Report {
+	rep := &Report{Context: inv.Context, Namespaces: inv.Namespaces, PodCount: inv.PodCount, KEVChecked: kevSet != nil, OnlyFixed: opts.OnlyFixed}
 	kevHits := map[string]*KEVHit{}
 	for _, r := range results {
 		ir := ImageReport{Image: r.Image, Unreachable: r.Unreachable}
@@ -139,6 +187,9 @@ func Build(inv *k8s.Inventory, results []ImageResult, kevSet kev.Set) *Report {
 			}
 		}
 		for _, f := range r.Findings {
+			if opts.OnlyFixed && f.Fixed == "" {
+				continue
+			}
 			sev := FromCVSS(f.CVSS)
 			inKEV := false
 			for _, cve := range f.CVEs() {
