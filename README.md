@@ -5,19 +5,32 @@
 ```
 $ stackradar scan
 
+ ✔ Listed running images      [39 images · 61 pods · 8 namespaces · prod-eu]
+ ✔ Loaded CISA KEV catalogue  [1412 exploited CVEs]
+ ✔ Scanned images             [39 images in 1m12s]
+   ├── by severity: 167 critical, 446 high, 546 medium, 66 low
+   └── skipped:     1 not reachable from here
+
 39 images · 61 pods · 8 namespaces · context prod-eu
 
-IMAGE                                                 CRIT  HIGH  MED  LOW  KEV  PODS
-docker.io/grafana/grafana:12.4.2@83749231c383         14    51    66   5    -    1
-ghcr.io/dexidp/dex:v2.43.0@b08a58c9731c               19    28    30   5    -    1
-quay.io/argoproj/argocd:v3.2.3@9ab6baab65a6           17    23    37   4    -    7
-registry.internal/payments-api:9f1fd70@957da44ee38f   ·     ·     ·    ·    ·    3     not reachable from here
+IMAGE                                                CRITICAL  HIGH  MEDIUM  LOW  KEV    PODS
+docker.io/grafana/grafana:12.4.2@83749231c383        14        51    66      5     1     1
+ghcr.io/dexidp/dex:v2.43.0@b08a58c9731c              19        28    30      5    -      1
+quay.io/argoproj/argocd:v3.2.3@9ab6baab65a6          17        23    37      4    -      7
+registry.internal/payments-api:9f1fd70@957da44ee38f  ·         ·     ·       ·    ·      3     not reachable from here
 ...
 
-Total: 167 critical · 446 high · 546 medium · 66 low
+Total: 167 critical, 446 high, 546 medium, 66 low
 
-★ 1 vulnerability in CISA's Known Exploited catalogue — actively exploited in the wild:
-   CVE-2026-31789  openssl  →  monitoring/grafana-fbfc6595c-62kln, ingress/controller-7c9d-x2ll1
+ KEV  1 vulnerability in CISA's Known Exploited Vulnerabilities catalogue — actively exploited in the wild
+      VULNERABILITY   PACKAGE  WORKLOADS
+      CVE-2026-31789  openssl  monitoring/grafana-fbfc6595c-62kln
+```
+
+While it runs you get a live task list (spinner, progress bar, which images are
+being pulled/scanned right now); the same output degrades to plain lines when
+stderr is not a terminal, and `NO_COLOR` is honoured.
+
 ```
 
 It answers the question every platform team gets asked at 09:00 when a CVE lands:

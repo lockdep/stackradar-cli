@@ -18,6 +18,7 @@ import (
 	"github.com/lockdep/stackradar-cli/internal/report"
 	"github.com/lockdep/stackradar-cli/internal/scan"
 	"github.com/lockdep/stackradar-cli/internal/serve"
+	"github.com/lockdep/stackradar-cli/internal/ui"
 )
 
 var scanOpts struct {
@@ -72,15 +73,13 @@ func runScan(cmd *cobra.Command, _ []string) error {
 	defer stop()
 
 	stderr := cmd.ErrOrStderr()
-	progress := func(format string, a ...any) {
-		if !scanOpts.jsonOut {
-			fmt.Fprintf(stderr, format+"\n", a...)
-		}
-	}
-
 	if err := report.ValidateSeverity(scanOpts.minSeverity); err != nil {
 		return err
 	}
+
+	prog := ui.New(stderr, scanOpts.jsonOut)
+	prog.OnInterrupt(stop)
+	defer prog.Close()
 
 	// 1. What is running?
 	inv, err := k8s.ListRunningImages(ctx, k8s.Options{
@@ -89,23 +88,27 @@ func runScan(cmd *cobra.Command, _ []string) error {
 		Namespaces: scanOpts.namespaces,
 	})
 	if err != nil {
+		prog.Close()
 		return fmt.Errorf("listing running images: %w", err)
 	}
 	if len(inv.Images) == 0 {
+		prog.Close()
 		return fmt.Errorf("no running containers found in context %q", inv.Context)
 	}
-	progress("Found %d unique images across %d pods in %d namespaces (context %s)",
-		len(inv.Images), inv.PodCount, len(inv.Namespaces), inv.Context)
+	prog.ImagesListed(len(inv.Images), inv.PodCount, len(inv.Namespaces), inv.Context)
 
 	// 2. KEV catalogue, fetched concurrently with the pulls.
 	var kevSet kev.Set
-	var kevErr error
 	var kevWG sync.WaitGroup
-	if !scanOpts.noKEV {
+	if scanOpts.noKEV {
+		prog.KEVSkipped()
+	} else {
 		kevWG.Add(1)
 		go func() {
 			defer kevWG.Done()
+			var kevErr error
 			kevSet, kevErr = kev.Load(ctx)
+			prog.KEVLoaded(len(kevSet), kevErr)
 		}()
 	}
 
@@ -114,9 +117,8 @@ func runScan(cmd *cobra.Command, _ []string) error {
 	results := make([]report.ImageResult, len(inv.Images))
 	sem := make(chan struct{}, max(1, scanOpts.concurrency))
 	var wg sync.WaitGroup
-	var mu sync.Mutex
-	done := 0
 	for i, img := range inv.Images {
+		prog.Image(img.Display(), ui.Queued, ui.Outcome{})
 		wg.Add(1)
 		go func(i int, img k8s.Image) {
 			defer wg.Done()
@@ -124,25 +126,25 @@ func runScan(cmd *cobra.Command, _ []string) error {
 			defer func() { <-sem }()
 
 			res := report.ImageResult{Image: img}
+			prog.Image(img.Display(), ui.Pulling, ui.Outcome{})
 			tar, err := pull.ToTarball(ctx, img.Ref)
 			if err != nil {
 				res.Err = err
 				res.Unreachable = pull.IsAuthOrNotFound(err)
 			} else {
 				defer os.Remove(tar)
+				prog.Image(img.Display(), ui.Scanning, ui.Outcome{})
 				res.Findings, res.Err = scanner.Tarball(ctx, tar)
 			}
-			mu.Lock()
 			results[i] = res
-			done++
-			progress("  [%d/%d] %s%s", done, len(inv.Images), img.Display(), statusSuffix(res))
-			mu.Unlock()
+			prog.Image(img.Display(), ui.Done, outcome(res))
 		}(i, img)
 	}
 	wg.Wait()
 	kevWG.Wait()
-	if kevErr != nil {
-		progress("warning: could not load CISA KEV catalogue (%v); continuing without it", kevErr)
+	if ctx.Err() != nil {
+		prog.Close()
+		return ctx.Err()
 	}
 
 	rep := report.Build(inv, results, kevSet)
@@ -158,8 +160,11 @@ func runScan(cmd *cobra.Command, _ []string) error {
 		if err := os.WriteFile(scanOpts.output, page, 0o644); err != nil {
 			return fmt.Errorf("writing %s: %w", scanOpts.output, err)
 		}
-		progress("Wrote %s", scanOpts.output)
+		prog.Note("Wrote %s", scanOpts.output)
 	}
+
+	// Freeze the task list before the report goes to stdout.
+	prog.Close()
 
 	if scanOpts.jsonOut {
 		if err := report.WriteJSON(cmd.OutOrStdout(), rep); err != nil {
@@ -190,13 +195,21 @@ func runScan(cmd *cobra.Command, _ []string) error {
 	})
 }
 
-func statusSuffix(r report.ImageResult) string {
-	switch {
-	case r.Unreachable:
-		return "  (not reachable from this machine)"
-	case r.Err != nil:
-		return "  (error: " + r.Err.Error() + ")"
-	default:
-		return fmt.Sprintf("  %d findings", len(r.Findings))
+func outcome(r report.ImageResult) ui.Outcome {
+	o := ui.Outcome{Findings: len(r.Findings), Err: r.Err, Unreachable: r.Unreachable}
+	for _, f := range r.Findings {
+		switch report.FromCVSS(f.CVSS) {
+		case report.Critical:
+			o.Critical++
+		case report.High:
+			o.High++
+		case report.Medium:
+			o.Medium++
+		case report.Low:
+			o.Low++
+		default:
+			o.Unknown++
+		}
 	}
+	return o
 }

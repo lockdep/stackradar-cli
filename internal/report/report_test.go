@@ -167,10 +167,10 @@ func TestWriteTable(t *testing.T) {
 	for _, want := range []string{
 		"3 images · 3 pods · 1 namespaces · context prod",
 		"IMAGE", "not reachable from here", "scan failed",
-		"1 critical · 0 high · 1 medium · 1 low · 1 unscored",
+		"1 critical, 0 high, 1 medium, 1 low (1 unscored)",
 		"1 image(s) live in a registry", "1 image(s) failed to scan",
 		"1 vulnerability in CISA", "CVE-LOW", "a/nginx",
-		"Findings (≥ high):", "CVE-CRIT", "fix: 2", "CVE-LOW ★", // KEV shown even below the threshold
+		"Findings (≥ high;", "CVE-CRIT", "FIXED IN", "CVE-LOW        Low       2.0   KEV", // KEV shown even below the threshold
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("table missing %q\n%s", want, out)
@@ -227,10 +227,10 @@ func TestHelpers(t *testing.T) {
 	if strings.Join(s, "") != "ab" {
 		t.Error(s)
 	}
-	if got := sevLabel("critical", 9.8, func(_, s string) string { return "<" + s + ">" }); got != "<CRITICAL 9.8>" {
+	if got := displaySeverity("critical"); got != "Critical" {
 		t.Error(got)
 	}
-	if got := sevLabel("low", 0, func(_, s string) string { return "<" + s + ">" }); got != "LOW" {
+	if got := displaySeverity("unknown"); got != "Unscored" {
 		t.Error(got)
 	}
 }
