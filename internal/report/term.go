@@ -184,6 +184,9 @@ func WriteTable(w io.Writer, rep *Report, minSev string) error {
 	// --- per-image findings, worst first, honouring --min-severity ------------
 	shown := 0
 	for _, ir := range rep.Images {
+		if minSev == "none" {
+			break
+		}
 		var rows []Finding
 		for _, f := range ir.Findings {
 			s, _ := ParseSeverity(f.Severity)
