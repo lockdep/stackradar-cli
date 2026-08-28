@@ -111,7 +111,7 @@ func WriteTable(w io.Writer, rep *Report, minSev string) error {
 	// --- summary table ------------------------------------------------------
 	t := newTable(w, []string{"Image", "Critical", "High", "Medium", "Low", "KEV", "Pods", ""})
 	for _, ir := range rep.Images {
-		name := ir.Image.Display()
+		name := ir.Image.Name()
 		pods := "" // empty when no cluster; the column then auto-hides
 		if len(ir.Image.Workloads) > 0 {
 			pods = fmt.Sprint(len(ir.Image.Workloads))

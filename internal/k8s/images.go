@@ -35,6 +35,19 @@ type Image struct {
 	Digest string `json:"digest,omitempty"`
 }
 
+// Name returns repo:tag without the digest, for the summary table where the
+// column width matters more than pinning; Display carries the digest.
+func (i Image) Name() string {
+	if i.Digest == "" {
+		return i.Ref
+	}
+	name := strings.SplitN(i.Ref, "@", 2)[0]
+	if len(i.Tags) > 0 {
+		name += ":" + i.Tags[0]
+	}
+	return name
+}
+
 // Display returns a short human-readable name: repo:tag@sha256:abcd1234.
 func (i Image) Display() string {
 	name := i.Ref
