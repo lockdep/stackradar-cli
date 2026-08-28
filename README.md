@@ -1,4 +1,8 @@
-# stackradar
+<p align="center">
+  <img src=".github/logo.svg" alt="StackRadar logo" width="96" height="96">
+</p>
+
+<h1 align="center">StackRadar</h1>
 
 **See which of your running Kubernetes pods contain known vulnerabilities — from your laptop, in about a minute, without installing anything in the cluster.**
 
