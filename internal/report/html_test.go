@@ -12,8 +12,11 @@ import (
 )
 
 func fixtureReport() *Report {
+	// Same shape the scanner produces: Ref is repo@digest, Tags holds the bare tag from the pod spec.
 	img := func(ref, digest string, pods ...string) k8s.Image {
-		return k8s.Image{Ref: ref + "@" + digest, Digest: digest, Workloads: pods, Tags: []string{ref}}
+		i := strings.LastIndex(ref, ":")
+		repo, tag := ref[:i], ref[i+1:]
+		return k8s.Image{Ref: repo + "@" + digest, Digest: digest, Workloads: pods, Tags: []string{tag}}
 	}
 	f := func(id, pkg, ver, eco string, cvss float64, fixed string, aliases ...string) scan.Finding {
 		return scan.Finding{ID: id, Package: pkg, Version: ver, Ecosystem: eco, CVSS: cvss, Fixed: fixed, Aliases: aliases,

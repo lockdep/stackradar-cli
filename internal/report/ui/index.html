@@ -155,24 +155,61 @@
 
   tr.detail td { padding: 0; background: var(--surface); }
   .detail-inner { padding: 12px 16px 16px 40px; }
-  .detail-inner .pods { font-size: 12px; color: var(--ink-muted); margin-bottom: 8px; }
-  .detail-inner .pods code { color: var(--ink-secondary); }
+  .detail-inner .running { margin-bottom: 10px; }
   .detail-inner table { background: var(--surface-raised); border: 1px solid var(--edge); border-radius: 6px; font-size: 12.5px; }
   .detail-inner th { background: var(--surface); }
   .fix { color: var(--success); }
   .nofix { color: var(--ink-faint); }
 
-  .cta {
-    margin-top: 32px; border: 1px solid var(--accent-muted); background: var(--accent-subtle);
-    border-radius: 6px; padding: 20px 24px; display: grid; grid-template-columns: 1fr auto; gap: 16px 32px; align-items: center;
+  /* ---- kubernetes cues: ⎈ context, namespace chips, pod chips ---- */
+  .helm { color: var(--accent); font-weight: 400; }
+  .ctx {
+    display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px;
+    border: 1px solid var(--edge); border-radius: 6px; background: var(--surface); color: var(--ink-secondary);
+    font-family: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace; font-size: 12px;
   }
-  .cta h2 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
-  .cta p { margin: 0; color: var(--ink-secondary); font-size: 13px; }
-  .cta ul { margin: 10px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 20px; font-size: 13px; color: var(--ink-secondary); }
-  .cta li::before { content: "→ "; color: var(--accent); }
-  .cta .actions { display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
-  .cta .actions small { color: var(--ink-muted); font-size: 11.5px; text-align: center; }
-  @media (max-width: 720px) { .cta { grid-template-columns: 1fr; } .banner li { grid-template-columns: 1fr; gap: 2px; } }
+  .ctx .pfx { color: var(--ink-faint); }
+  h1 .helm { margin-right: 6px; }
+  .nss { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; align-items: center; }
+  .nss .lbl { font-size: 12px; color: var(--ink-faint); margin-right: 2px; }
+  .ns {
+    font-family: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace; font-size: 12px;
+    padding: 1px 9px; border: 1px solid var(--edge); border-radius: 999px; color: var(--ink-secondary); background: var(--surface-raised);
+  }
+  .ns .pfx { color: var(--ink-faint); }
+  .ns:hover { border-color: var(--edge-strong); color: var(--ink); }
+  .ns[aria-pressed="true"] { background: var(--accent-subtle); border-color: var(--accent-muted); color: var(--accent); }
+  .ns.more { border-style: dashed; color: var(--ink-faint); cursor: default; }
+  .pods { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+  .pod {
+    display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px; border: 1px solid var(--edge); border-radius: 4px;
+    background: var(--surface-raised); color: var(--ink-secondary); font-size: 11.5px;
+    font-family: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  .pod svg { width: 10px; height: 10px; color: var(--accent); flex-shrink: 0; }
+  .pod .pfx { color: var(--ink-faint); }
+
+  /* ---- closing card ---- */
+  .cta { margin-top: 32px; border: 1px solid var(--edge); background: var(--surface-raised); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden; }
+  .cta-head { display: flex; gap: 16px; align-items: flex-start; padding: 20px 24px; }
+  .cta-head .helm { font-size: 28px; line-height: 1; margin-top: -2px; }
+  .cta-head .text { flex: 1; min-width: 0; }
+  .cta h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
+  .cta p { margin: 0; color: var(--ink-secondary); font-size: 13px; max-width: 64ch; }
+  .cta .actions { display: flex; flex-direction: column; gap: 6px; align-items: center; flex-shrink: 0; }
+  .cta .actions small { color: var(--ink-muted); font-size: 11.5px; white-space: nowrap; }
+  .cta-points { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--edge); background: var(--surface); }
+  .cta-points li { padding: 12px 16px; font-size: 12.5px; color: var(--ink-muted); border-left: 1px solid var(--edge); display: flex; flex-direction: column; gap: 2px; line-height: 1.4; }
+  .cta-points li:first-child { border-left: 0; }
+  .cta-points b { color: var(--ink); font-weight: 600; font-size: 13px; }
+  @media (max-width: 720px) {
+    .cta-head { flex-wrap: wrap; }
+    .cta .actions { width: 100%; align-items: stretch; }
+    .cta-points { grid-template-columns: 1fr 1fr; }
+    .cta-points li:nth-child(odd) { border-left: 0; }
+    .cta-points li:nth-child(n+3) { border-top: 1px solid var(--edge); }
+    .banner li { grid-template-columns: 1fr; gap: 2px; }
+  }
 
   .foot { margin: 28px 0 8px; color: var(--ink-faint); font-size: 12px; line-height: 1.6; }
   .foot code { font-size: 11.5px; }
@@ -190,6 +227,7 @@
     StackRadar
     <span class="tag">local scan</span>
   </div>
+  <span class="ctx" id="ctx" title="kubeconfig context"><span class="helm">⎈</span><span class="pfx">context:</span><span id="ctx-name"></span></span>
   <div class="spacer"></div>
   <button class="btn icon" id="theme" title="Toggle theme" aria-label="Toggle theme">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
@@ -200,6 +238,7 @@
 <main class="wrap">
   <h1 id="title"></h1>
   <div class="sub" id="sub"></div>
+  <div class="nss" id="nss"></div>
 
   <section id="kev"></section>
 
@@ -260,21 +299,23 @@
   </section>
 
   <section class="cta">
-    <div>
-      <h2>This is a snapshot. Your cluster isn't.</h2>
-      <p>Run it again tomorrow and today's clean image may carry a new CVE. StackRadar keeps a continuous SBOM of every workload and re-checks it the moment an advisory lands.</p>
-      <ul>
-        <li>History and trends per cluster, workload and image</li>
-        <li>Alerts when a new KEV or critical appears in something you run</li>
-        <li>Scans images this laptop can't pull, using the cluster's own pull secrets</li>
-        <li>A dated record you can hand an auditor (CRA 24-hour reporting)</li>
-      </ul>
+    <div class="cta-head">
+      <span class="helm" aria-hidden="true">⎈</span>
+      <div class="text">
+        <h2>This is a snapshot. Your cluster isn't.</h2>
+        <p>Pods roll, images change and new advisories land overnight. StackRadar runs inside the cluster, keeps an SBOM of every workload and re-checks it the moment a CVE is published.</p>
+      </div>
+      <div class="actions">
+        <a class="btn primary" href="https://stackradar.io/?utm_source=cli&utm_medium=report&utm_campaign=serve_cta" target="_blank" rel="noopener">Set up continuous monitoring</a>
+        <small>Free tier · no card · <code>helm install</code> · <a href="https://stackradar.io/docs?utm_source=cli&utm_medium=report" target="_blank" rel="noopener">docs</a></small>
+      </div>
     </div>
-    <div class="actions">
-      <a class="btn primary" href="https://stackradar.io/?utm_source=cli&utm_medium=report&utm_campaign=serve_cta" target="_blank" rel="noopener">Set up continuous monitoring</a>
-      <a class="btn" href="https://stackradar.io/docs?utm_source=cli&utm_medium=report" target="_blank" rel="noopener">Read the docs</a>
-      <small>Free tier · no card · 2-minute Helm install</small>
-    </div>
+    <ul class="cta-points">
+      <li><b>History</b><span>per cluster, workload and image</span></li>
+      <li><b>Alerts</b><span>when a new KEV or critical hits something you run</span></li>
+      <li><b>Private registries</b><span>scanned with the cluster's own pull secrets</span></li>
+      <li><b>Audit record</b><span>dated evidence for CRA 24-hour reporting</span></li>
+    </ul>
   </section>
 
   <p class="foot" id="foot"></p>
@@ -294,11 +335,25 @@
   function plural(c, one, many) { return c === 1 ? one : many; }
   function osvLink(id) { return 'https://osv.dev/vulnerability/' + encodeURIComponent(id); }
   function nsOf(w) { return w.split('/')[0]; }
+  var POD_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7z"/></svg>';
+  // "ns/pod" → chip with a hexagon (the Kubernetes pod glyph) and the namespace dimmed.
+  function podChip(w) {
+    var i = w.indexOf('/');
+    var ns = i > 0 ? w.slice(0, i + 1) : '', name = i > 0 ? w.slice(i + 1) : w;
+    return '<span class="pod">' + POD_ICON + '<span class="pfx">' + esc(ns) + '</span>' + esc(name) + '</span>';
+  }
+  function podChips(ws, max) {
+    var out = ws.slice(0, max).map(podChip).join('');
+    if (ws.length > max) out += '<span class="pod pfx">+' + (ws.length - max) + ' more</span>';
+    return '<span class="pods">' + out + '</span>';
+  }
   function displayName(img) {
     var repo = img.ref.split('@')[0];
     var digest = img.digest ? img.digest.replace(/^sha256:/, '').slice(0, 12) : '';
-    var tags = (img.tags || []).filter(function (t) { return t.indexOf('@') < 0; });
-    return { repo: tags.length && tags[0].indexOf(':') > 0 ? tags[0] : repo, digest: digest };
+    // Mirrors k8s.Image.Display(): tags are bare ("12.4.2") — append the first one seen in a pod spec.
+    var tag = (img.tags || [])[0];
+    if (tag && repo.indexOf(':', repo.lastIndexOf('/')) < 0) repo += ':' + tag;
+    return { repo: repo, digest: digest };
   }
 
   // ---- theme ----
@@ -309,7 +364,8 @@
   });
 
   // ---- header ----
-  document.getElementById('title').textContent = 'Context ' + R.context;
+  document.getElementById('title').innerHTML = '<span class="helm" aria-hidden="true">⎈</span>' + esc(R.context);
+  document.getElementById('ctx-name').textContent = R.context;
   document.title = 'StackRadar scan — ' + R.context;
   var when = payload.generated_at ? new Date(payload.generated_at) : null;
   document.getElementById('sub').innerHTML =
@@ -326,7 +382,7 @@
       ' in CISA’s Known Exploited Vulnerabilities catalogue — actively exploited in the wild</h2><ul>' +
       R.kev.map(function (h) {
         return '<li><span class="mono"><a href="' + osvLink(h.cve) + '" target="_blank" rel="noopener">' + esc(h.cve) + '</a> · ' + esc(h.package) + '</span>' +
-          '<span class="w">' + h.workloads.slice(0, 6).map(esc).join(', ') + (h.workloads.length > 6 ? ', +' + (h.workloads.length - 6) + ' more' : '') + '</span></li>';
+          '<span class="w">' + podChips(h.workloads, 6) + '</span></li>';
       }).join('') + '</ul></div>';
   } else if (R.kev_checked) {
     kevEl.innerHTML = '<div class="ok">✓ Nothing in CISA’s Known Exploited Vulnerabilities catalogue.</div>';
@@ -376,7 +432,18 @@
   // ---- filters ----
   var q = document.getElementById('q'), nsSel = document.getElementById('ns'), minSel = document.getElementById('minsev'),
       fixChk = document.getElementById('fixable'), kevChk = document.getElementById('kevonly');
-  R.namespaces.slice().sort().forEach(function (ns) { var o = document.createElement('option'); o.value = ns; o.textContent = ns; nsSel.appendChild(o); });
+  var NS_SORTED = R.namespaces.slice().sort();
+  NS_SORTED.forEach(function (ns) { var o = document.createElement('option'); o.value = ns; o.textContent = ns; nsSel.appendChild(o); });
+  // Namespace chips under the title: a quick filter mirroring the select.
+  var NS_MAX = 16;
+  document.getElementById('nss').innerHTML = NS_SORTED.length ? '<span class="lbl">namespaces</span>' +
+    NS_SORTED.slice(0, NS_MAX).map(function (ns) { return '<button class="ns" data-ns="' + esc(ns) + '" aria-pressed="false"><span class="pfx">ns/</span>' + esc(ns) + '</button>'; }).join('') +
+    (NS_SORTED.length > NS_MAX ? '<span class="ns more">+' + (NS_SORTED.length - NS_MAX) + ' more in the dropdown</span>' : '') : '';
+  document.getElementById('nss').addEventListener('click', function (e) {
+    var b = e.target.closest('button.ns'); if (!b) return;
+    nsSel.value = nsSel.value === b.dataset.ns ? '' : b.dataset.ns;
+    render();
+  });
   var onlySev = null; // from tiles: exact severity bucket
   var openImages = {};
   var tab = 'images';
@@ -404,6 +471,7 @@
   function render() {
     var text = q.value.trim().toLowerCase();
     var ns = nsSel.value;
+    document.querySelectorAll('button.ns').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.ns === ns)); });
 
     // Images tab
     var shownImages = 0, body = '';
@@ -428,7 +496,7 @@
         '<td>' + status + '</td></tr>';
       if (isOpen) {
         body += '<tr class="detail"><td colspan="6"><div class="detail-inner">' +
-          '<div class="pods">Running in: ' + row.pods.slice(0, 12).map(function (p) { return '<code>' + esc(p) + '</code>'; }).join(', ') + (row.pods.length > 12 ? ', +' + (row.pods.length - 12) + ' more' : '') + '</div>' +
+          '<div class="running">' + podChips(row.pods, 12) + '</div>' +
           (rows.length ? '<table><thead><tr><th>Advisory</th><th>Severity</th><th>Package</th><th>Installed</th><th>Fixed in</th></tr></thead><tbody>' +
             rows.map(function (f) { return findingRow(f); }).join('') + '</tbody></table>'
             : '<div class="empty">' + (row.ir.error ? esc(row.ir.error) : 'No findings match the current filters.') + '</div>') +
