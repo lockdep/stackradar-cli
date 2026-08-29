@@ -4,11 +4,13 @@ package scan
 import (
 	"context"
 	"errors"
-	"io"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/google/osv-scanner/v2/pkg/models"
 	"github.com/google/osv-scanner/v2/pkg/osvscanner"
@@ -40,20 +42,39 @@ func (f Finding) CVEs() []string {
 	return out
 }
 
-type Scanner struct{}
-
-// New returns a scanner. osv-scanner logs through its own slog handler; it is
-// discarded unless verbose, in which case it goes to stderr.
-func New(verbose bool) *Scanner {
-	if verbose {
-		osvscanner.SetLogger(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	} else {
-		osvscanner.SetLogger(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError + 1}))
-	}
-	return &Scanner{}
+type Scanner struct {
+	// mu serialises DoContainerScan so the OSV.dev probe below can attribute
+	// failed requests to one image. Pulls — the slow, network-bound part —
+	// still run in parallel.
+	mu    sync.Mutex
+	probe *osvProbe
 }
 
+// New returns a scanner. osv-scanner's log lines go through a handler that
+// forwards everything at Error level to warn (a failure is never silent) and
+// prints debug output to stderr when verbose. Requests to api.osv.dev are
+// observed through http.DefaultTransport — osv-scanner discards the
+// vulnerability matcher's own error status for container scans, so a failed
+// lookup would otherwise come back as an empty, clean-looking result.
+func New(verbose bool, warn func(msg string)) *Scanner {
+	c := &capture{verbose: verbose, warn: warn}
+	if verbose {
+		c.debug = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})
+	}
+	osvscanner.SetLogger(c)
+	p := &osvProbe{next: http.DefaultTransport}
+	http.DefaultTransport = p
+	return &Scanner{probe: p}
+}
+
+// ErrLookupFailed is returned when the OSV.dev query for an image failed;
+// the findings would otherwise silently be empty.
+var ErrLookupFailed = errors.New("vulnerability lookup failed")
+
 func (s *Scanner) Tarball(ctx context.Context, path string) ([]Finding, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.probe.reset()
 	res, err := osvscanner.DoContainerScan(osvscanner.ScannerActions{
 		Image:          path,
 		IsImageArchive: true,
@@ -69,8 +90,95 @@ func (s *Scanner) Tarball(ctx context.Context, path string) ([]Finding, error) {
 	default:
 		return nil, err
 	}
+	// Packages were found but nothing matched, and at least one OSV.dev
+	// request failed on the way: that is a lookup failure, not a clean image.
+	if rawVulnCount(res) == 0 {
+		if msg := s.probe.failure(); msg != "" {
+			return nil, fmt.Errorf("%w: %s", ErrLookupFailed, msg)
+		}
+	}
 	return flatten(res), nil
 }
+
+func rawVulnCount(res models.VulnerabilityResults) int {
+	n := 0
+	for _, src := range res.Results {
+		for _, pkg := range src.Packages {
+			n += len(pkg.Vulnerabilities)
+		}
+	}
+	return n
+}
+
+// osvProbe wraps a RoundTripper and remembers failed requests to api.osv.dev.
+type osvProbe struct {
+	next http.RoundTripper
+
+	mu       sync.Mutex
+	failures []string
+}
+
+const osvHost = "api.osv.dev"
+
+func (p *osvProbe) reset() {
+	p.mu.Lock()
+	p.failures = nil
+	p.mu.Unlock()
+}
+
+// failure returns the last recorded failure, or "".
+func (p *osvProbe) failure() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.failures) == 0 {
+		return ""
+	}
+	return p.failures[len(p.failures)-1]
+}
+
+func (p *osvProbe) record(msg string) {
+	p.mu.Lock()
+	p.failures = append(p.failures, msg)
+	p.mu.Unlock()
+}
+
+func (p *osvProbe) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := p.next.RoundTrip(req)
+	if req.URL.Hostname() != osvHost {
+		return resp, err
+	}
+	switch {
+	case err != nil:
+		p.record(fmt.Sprintf("%s %s: %v", req.Method, req.URL.Path, err))
+	case resp.StatusCode >= 400:
+		p.record(fmt.Sprintf("%s %s: HTTP %d", req.Method, req.URL.Path, resp.StatusCode))
+	}
+	return resp, err
+}
+
+// capture is the slog.Handler osv-scanner logs through.
+type capture struct {
+	verbose bool
+	warn    func(string)
+	debug   slog.Handler
+}
+
+func (c *capture) Enabled(_ context.Context, l slog.Level) bool {
+	return c.verbose || l >= slog.LevelError
+}
+
+func (c *capture) Handle(ctx context.Context, r slog.Record) error {
+	if r.Level >= slog.LevelError && c.warn != nil {
+		c.warn(r.Message)
+	}
+	if c.debug != nil {
+		return c.debug.Handle(ctx, r)
+	}
+	return nil
+}
+
+func (c *capture) WithAttrs([]slog.Attr) slog.Handler { return c }
+func (c *capture) WithGroup(string) slog.Handler      { return c }
 
 func flatten(res models.VulnerabilityResults) []Finding {
 	var out []Finding

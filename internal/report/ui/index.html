@@ -119,6 +119,14 @@
     height: 30px; padding: 0 10px; border: 1px solid var(--edge); border-radius: 6px;
     background: var(--surface-raised); color: var(--ink); font: inherit; font-size: 13px;
   }
+  .toolbar select {
+    appearance: none; -webkit-appearance: none; padding-right: 28px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%2359636e'><path d='M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06z'/></svg>");
+    background-repeat: no-repeat; background-position: right 8px center; background-size: 14px 14px;
+  }
+  :root[data-theme="dark"] .toolbar select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%239198a1'><path d='M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06z'/></svg>");
+  }
   .toolbar input[type=search] { min-width: 260px; flex: 1; max-width: 420px; }
   .toolbar label.chk { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--ink-secondary); }
   .toolbar .count { color: var(--ink-muted); font-size: 12px; margin-left: auto; }
@@ -142,6 +150,14 @@
   .sq.zero { background: var(--surface-hover); color: var(--ink-secondary); }
   .sq.critical { background: var(--sev-critical); } .sq.high { background: var(--sev-high); } .sq.medium { background: var(--sev-medium); } .sq.low { background: var(--sev-low); }
   .sqs { display: inline-flex; }
+  .tip { position: relative; display: inline-flex; }
+  .tip::after, .tip::before { position: absolute; left: 50%; transform: translateX(-50%); opacity: 0; pointer-events: none; transition: opacity .12s; z-index: 10; }
+  .tip::after {
+    content: attr(data-tip); bottom: calc(100% + 6px); padding: 3px 8px; border-radius: 4px; white-space: nowrap;
+    background: var(--ink); color: var(--surface-raised); font-size: 11.5px; font-weight: 500; line-height: 1.4;
+  }
+  .tip::before { content: ""; bottom: calc(100% + 2px); border: 4px solid transparent; border-top-color: var(--ink); }
+  .tip:hover::after, .tip:hover::before { opacity: 1; }
 
   .badge { display: inline-flex; align-items: center; padding: 1px 4px; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; color: var(--on-emphasis); white-space: nowrap; }
   .badge.critical { background: var(--sev-critical); } .badge.high { background: var(--sev-high); } .badge.medium { background: var(--sev-medium); } .badge.low { background: var(--sev-low); }
@@ -159,8 +175,19 @@
   tr.detail td { padding: 0; background: var(--surface); }
   .detail-inner { padding: 12px 16px 16px 40px; }
   .detail-inner .running { margin-bottom: 10px; }
+  .img-info {
+    display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; align-items: baseline;
+    margin-bottom: 12px; padding: 10px 12px; background: var(--surface-raised); border: 1px solid var(--edge); border-radius: 6px; font-size: 12.5px;
+  }
+  .img-info dt { color: var(--ink-muted); font-size: 12px; margin: 0; }
+  .img-info dd { margin: 0; color: var(--ink); word-break: break-all; min-width: 0; }
+  .img-info .sqs { vertical-align: middle; }
+  @media (max-width: 720px) { .img-info { grid-template-columns: 1fr; gap: 2px; } .img-info dt { margin-top: 6px; } }
   .detail-inner table { background: var(--surface-raised); border: 1px solid var(--edge); border-radius: 6px; font-size: 12.5px; }
   .detail-inner th { background: var(--surface); }
+  .detail-inner table { width: 100%; }
+  tr.detail .detail-inner td { padding: 6px 12px; }
+  .detail-inner td:nth-child(1), .detail-inner td:nth-child(2) { white-space: nowrap; }
   .fix { color: var(--success); }
   .nofix { color: var(--ink-faint); }
 
@@ -193,14 +220,13 @@
   .pod .pfx { color: var(--ink-faint); }
 
   /* ---- closing card ---- */
-  .cta { margin-top: 32px; border: 1px solid var(--edge); background: var(--surface-raised); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden; }
-  .cta-head { display: flex; gap: 16px; align-items: flex-start; padding: 20px 24px; }
-  .cta-head .helm { font-size: 28px; line-height: 1; margin-top: -2px; }
+  .cta { margin-top: 32px; border: 1px solid var(--attention); border-left-width: 4px; background: var(--surface-raised); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden; }
+  .cta-head { display: flex; gap: 14px; align-items: flex-start; padding: 20px 24px; background: var(--attention-subtle); }
+  .cta-head .icon { flex-shrink: 0; width: 22px; height: 22px; color: var(--attention); margin-top: 1px; }
   .cta-head .text { flex: 1; min-width: 0; }
   .cta h2 { margin: 0 0 4px; font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
   .cta p { margin: 0; color: var(--ink-secondary); font-size: 13px; max-width: 64ch; }
-  .cta .actions { display: flex; flex-direction: column; gap: 6px; align-items: center; flex-shrink: 0; }
-  .cta .actions small { color: var(--ink-muted); font-size: 11.5px; white-space: nowrap; }
+  .cta .actions { display: flex; align-items: center; flex-shrink: 0; align-self: center; }
   .cta-points { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--edge); background: var(--surface); }
   .cta-points li { padding: 12px 16px; font-size: 12.5px; color: var(--ink-muted); border-left: 1px solid var(--edge); display: flex; flex-direction: column; gap: 2px; line-height: 1.4; }
   .cta-points li:first-child { border-left: 0; }
@@ -235,7 +261,7 @@
   <button class="btn icon" id="theme" title="Toggle theme" aria-label="Toggle theme">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
   </button>
-  <a class="btn primary" id="cta-top" href="https://stackradar.io/?utm_source=cli&utm_medium=report&utm_campaign=serve" target="_blank" rel="noopener">Monitor continuously</a>
+  <a class="btn primary" id="cta-top" href="https://stackradar.io/?utm_source=cli&utm_medium=report&utm_campaign=serve" target="_blank" rel="noopener">Set up continuous monitoring</a>
 </header>
 
 <main class="wrap">
@@ -303,14 +329,13 @@
 
   <section class="cta">
     <div class="cta-head">
-      <span class="helm" aria-hidden="true">⎈</span>
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       <div class="text">
         <h2>This is a snapshot. Your cluster isn't.</h2>
         <p>Pods roll, images change and new advisories land overnight. StackRadar runs inside the cluster, keeps an SBOM of every workload and re-checks it the moment a CVE is published.</p>
       </div>
       <div class="actions">
         <a class="btn primary" href="https://stackradar.io/?utm_source=cli&utm_medium=report&utm_campaign=serve_cta" target="_blank" rel="noopener">Set up continuous monitoring</a>
-        <small>Free tier · no card · <code>helm install</code> · <a href="https://stackradar.io/docs?utm_source=cli&utm_medium=report" target="_blank" rel="noopener">docs</a></small>
       </div>
     </div>
     <ul class="cta-points">
@@ -499,6 +524,7 @@
         '<td>' + status + '</td></tr>';
       if (isOpen) {
         body += '<tr class="detail"><td colspan="6"><div class="detail-inner">' +
+          imageInfo(row) +
           '<div class="running">' + podChips(row.pods, 12) + '</div>' +
           (rows.length ? '<table><thead><tr><th>Advisory</th><th>Severity</th><th>Package</th><th>Installed</th><th>Fixed in</th></tr></thead><tbody>' +
             rows.map(function (f) { return findingRow(f); }).join('') + '</tbody></table>'
@@ -552,7 +578,26 @@
       th.querySelector('.arrow').textContent = th.dataset.sort === sort.key ? (sort.dir < 0 ? '▼' : '▲') : '';
     });
   }
-  function sq(v, s) { return '<span class="sq ' + (v ? s : 'zero') + '" title="' + SEV_LABEL[s] + '">' + v + '</span>'; }
+  function sq(v, s) {
+    // Hover tooltip is CSS-only (data-tip) and never reaches a screen reader, so the label also goes in the accessible name.
+    return '<span class="tip" data-tip="' + SEV_LABEL[s] + '"><span class="sq ' + (v ? s : 'zero') + '" role="img" aria-label="' + v + ' ' + SEV_LABEL[s] + '">' + v + '</span></span>';
+  }
+  // Header of the expanded image row: the full reference and what the scan found in it.
+  function imageInfo(row) {
+    var img = row.ir.image, c = row.ir.counts, total = c.critical + c.high + c.medium + c.low + c.unknown;
+    var rows = [['Image', '<span class="mono">' + esc(img.ref) + '</span>']];
+    if (img.tags && img.tags.length) rows.push([plural(img.tags.length, 'Tag', 'Tags'), '<span class="mono">' + img.tags.map(esc).join(', ') + '</span>']);
+    if (img.digest) rows.push(['Digest', '<span class="mono">' + esc(img.digest) + '</span>']);
+    rows.push(['Findings', '<span class="sqs">' + sq(c.critical, 'critical') + sq(c.high, 'high') + sq(c.medium, 'medium') + sq(c.low, 'low') + '</span>' +
+      (c.unknown ? ' <span class="badge unknown" title="' + UNSCORED_HINT + '">' + c.unknown + ' unscored</span>' : '') +
+      (c.kev ? ' <span class="badge kev">★ ' + c.kev + ' KEV</span>' : '') +
+      ' <span class="muted">' + n(total) + ' ' + plural(total, 'vulnerability', 'vulnerabilities') + '</span>']);
+    rows.push(['Pods', n(row.pods.length) + ' ' + plural(row.pods.length, 'pod', 'pods') + ' in ' + n(uniq(row.ns).length) + ' ' + plural(uniq(row.ns).length, 'namespace', 'namespaces')]);
+    if (row.ir.unreachable) rows.push(['Status', 'not reachable from here']);
+    else if (row.ir.error) rows.push(['Status', 'scan failed: ' + esc(row.ir.error)]);
+    return '<dl class="img-info">' + rows.map(function (r) { return '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>'; }).join('') + '</dl>';
+  }
+  function uniq(a) { return a.filter(function (x, i) { return a.indexOf(x) === i; }); }
   function sevBadge(f) {
     var s = f.severity in SEV ? f.severity : 'unknown';
     return '<span class="badge ' + s + '"' + (s === 'unknown' ? ' title="' + UNSCORED_HINT + '"' : '') + '>' + (s === 'unknown' ? 'Unscored' : s) + '</span>' +

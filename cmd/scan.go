@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -165,7 +167,7 @@ func runScan(cmd *cobra.Command, _ []string) error {
 	}
 
 	// 3. Pull + scan each image.
-	scanner := scan.New(rootOpts.verbose)
+	scanner := scan.New(rootOpts.verbose, func(msg string) { prog.Note("%s", msg) })
 	results := make([]report.ImageResult, len(inv.Images))
 	sem := make(chan struct{}, max(1, scanOpts.concurrency))
 	var wg sync.WaitGroup
@@ -239,8 +241,9 @@ func runScan(cmd *cobra.Command, _ []string) error {
 		fmt.Fprintf(stderr, "Wrote %s\n", scanOpts.file)
 	}
 
+	explicit := len(scanOpts.images) > 0
 	if !scanOpts.serve {
-		return report.CheckThreshold(rep, scanOpts.failOn)
+		return exitStatus(rep, scanOpts.failOn, explicit)
 	}
 	// The scan is done; the overall --timeout should not tear the page down.
 	stop()
@@ -257,7 +260,30 @@ func runScan(cmd *cobra.Command, _ []string) error {
 	}); err != nil {
 		return err
 	}
-	return report.CheckThreshold(rep, scanOpts.failOn)
+	return exitStatus(rep, scanOpts.failOn, explicit)
+}
+
+// exitStatus decides the process outcome once the report is out. A met
+// --fail-on threshold wins (exit 2). Otherwise an image that failed to scan —
+// or, when images were named with --image, one this machine could not pull —
+// is an error (exit 1): a gate must never pass because the scan did not
+// happen. Unreachable images in a cluster scan are expected (private
+// registries) and stay exit 0.
+func exitStatus(rep *report.Report, failOn string, explicitImages bool) error {
+	if err := report.CheckThreshold(rep, failOn); err != nil {
+		return err
+	}
+	var problems []string
+	if rep.Errored > 0 {
+		problems = append(problems, fmt.Sprintf("%d image(s) failed to scan", rep.Errored))
+	}
+	if explicitImages && rep.Unreachable > 0 {
+		problems = append(problems, fmt.Sprintf("%d image(s) could not be pulled", rep.Unreachable))
+	}
+	if len(problems) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(problems, "; ") + " (see the report for details)")
 }
 
 func isTTY(w io.Writer) bool {

@@ -37,6 +37,7 @@ brews:
   - repository:
       owner: lockdep
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
     homepage: https://stackradar.io
     description: "See which running Kubernetes pods contain known vulnerabilities — from your laptop"

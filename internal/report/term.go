@@ -160,7 +160,7 @@ func WriteTable(w io.Writer, rep *Report, minSev string) error {
 	}
 	if rep.Errored > 0 {
 		fmt.Fprintf(w, "%s %s\n", st.warn.Render("⚠"), st.hint.Render(fmt.Sprintf(
-			"%d image(s) failed to scan — run with --json to see the errors.", rep.Errored)))
+			"%d image(s) failed to scan — run with -o json to see the errors.", rep.Errored)))
 	}
 
 	// --- KEV callout ----------------------------------------------------------
