@@ -31,11 +31,19 @@ type Finding struct {
 	Fixed string `json:"fixed,omitempty"`
 }
 
-// CVEs returns every CVE identifier attached to the finding.
+// CVEs returns every CVE identifier attached to the finding, deduplicated.
+// Distro-namespaced aliases such as UBUNTU-CVE-2026-31431 (the only CVE
+// reference OSV attaches to Ubuntu USN records) are normalised to the bare
+// CVE ID so KEV lookups see them.
 func (f Finding) CVEs() []string {
 	var out []string
+	seen := map[string]bool{}
 	for _, id := range append([]string{f.ID}, f.Aliases...) {
-		if strings.HasPrefix(id, "CVE-") {
+		if i := strings.Index(id, "CVE-"); i > 0 && strings.HasSuffix(id[:i], "-") {
+			id = id[i:]
+		}
+		if strings.HasPrefix(id, "CVE-") && !seen[id] {
+			seen[id] = true
 			out = append(out, id)
 		}
 	}

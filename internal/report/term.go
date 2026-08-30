@@ -1,7 +1,11 @@
 package report
 
 import (
+	"slices"
+	"sort"
+
 	"fmt"
+	"github.com/lockdep/stackradar-cli/internal/pull"
 	"io"
 	"os"
 	"strings"
@@ -119,7 +123,11 @@ func WriteTable(w io.Writer, rep *Report, minSev string) error {
 		dot := st.hint.Render("·")
 		switch {
 		case ir.Unreachable:
-			_ = t.Append(name, dot, dot, dot, dot, dot, pods, st.hint.Render("not reachable from here"))
+			why := "not reachable from here"
+			if ir.Reason != "" {
+				why += ": " + ir.Reason
+			}
+			_ = t.Append(name, dot, dot, dot, dot, dot, pods, st.hint.Render(why))
 			continue
 		case ir.Error != "":
 			_ = t.Append(name, dot, dot, dot, dot, dot, pods, st.warn.Render("scan failed"))
@@ -155,8 +163,7 @@ func WriteTable(w io.Writer, rep *Report, minSev string) error {
 	fmt.Fprintln(w)
 
 	if rep.Unreachable > 0 {
-		fmt.Fprintf(w, "%s %s\n", st.warn.Render("⚠"), st.hint.Render(fmt.Sprintf(
-			"%d image(s) live in a registry this machine cannot pull from (no credentials, or private network).\n  An in-cluster agent scans those with the cluster's own pull secrets.", rep.Unreachable)))
+		fmt.Fprintf(w, "%s %s\n", st.warn.Render("⚠"), st.hint.Render(unreachableHint(rep)))
 	}
 	if rep.Errored > 0 {
 		fmt.Fprintf(w, "%s %s\n", st.warn.Render("⚠"), st.hint.Render(fmt.Sprintf(
@@ -226,16 +233,72 @@ func WriteTable(w io.Writer, rep *Report, minSev string) error {
 	}
 
 	fmt.Fprintln(w)
-	for _, line := range []string{
+	footer := []string{
 		"This is a point-in-time snapshot from your laptop. Nothing about your cluster was sent anywhere",
 		"except your registries, api.osv.dev and cisa.gov.",
-		"",
+	}
+	if n := len(rep.PullSecretsUsed); n > 0 {
+		footer = append(footer, fmt.Sprintf("Registry credentials were read from %d cluster imagePullSecret%s (%s) and used in memory only.",
+			n, plural(n, "", "s"), joinMax(rep.PullSecretsUsed, 3)))
+	}
+	footer = append(footer, "")
+	for _, line := range append(footer, []string{
 		"Want this continuously — every cluster, re-checked the moment a new advisory lands,",
 		"with a history you can hand an auditor?  →  " + st.link.Render("https://stackradar.io") + st.hint.Render("   (free tier, no card)"),
-	} {
+	}...) {
 		fmt.Fprintln(w, st.hint.Render(line))
 	}
 	return nil
+}
+
+// unreachableHint explains why images could not be pulled, grouped by the
+// dominant cause, with the command that fixes it where there is one.
+func unreachableHint(rep *Report) string {
+	byReason := map[string][]string{} // reason -> registries
+	for _, ir := range rep.Images {
+		if !ir.Unreachable {
+			continue
+		}
+		reg := pull.Registry(ir.Image.Ref)
+		r := ir.Reason
+		if r == "" {
+			r = "unknown"
+		}
+		if !slices.Contains(byReason[r], reg) {
+			byReason[r] = append(byReason[r], reg)
+		}
+	}
+	var lines []string
+	lines = append(lines, fmt.Sprintf("%d image(s) could not be pulled from this machine.", rep.Unreachable))
+	reasons := make([]string, 0, len(byReason))
+	for r := range byReason {
+		reasons = append(reasons, r)
+	}
+	sort.Strings(reasons)
+	for _, r := range reasons {
+		regs := strings.Join(byReason[r], ", ")
+		switch {
+		case strings.HasPrefix(r, "credentials rejected"):
+			lines = append(lines, fmt.Sprintf("  %s — no credentials for this registry, or the stored login expired. Run `docker login %s`", regs, byReason[r][0]))
+			if strings.HasSuffix(byReason[r][0], "digitalocean.com") {
+				lines[len(lines)-1] += " (or `doctl registry login`)"
+			}
+			lines[len(lines)-1] += "."
+		case strings.HasPrefix(r, "access denied"), strings.HasPrefix(r, "not found"):
+			lines = append(lines, fmt.Sprintf("  %s — %s: no credentials found for this registry, or the account cannot read the repo. Run `docker login %s`.", regs, r, byReason[r][0]))
+		case r == "cannot resolve host":
+			lines = append(lines, fmt.Sprintf("  %s — not resolvable from here (private network?).", regs))
+		default:
+			lines = append(lines, fmt.Sprintf("  %s — %s.", regs, r))
+		}
+	}
+	if rep.PullSecretsOffered {
+		lines = append(lines, "  The cluster has imagePullSecrets for these pods. Re-run with --use-pull-secrets to pull with them",
+			"  (read via your kubeconfig, used in memory only, never written).")
+	} else if len(rep.PullSecretsUsed) > 0 {
+		lines = append(lines, "  The cluster's imagePullSecrets were used too and did not cover these.")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func displaySeverity(s string) string {

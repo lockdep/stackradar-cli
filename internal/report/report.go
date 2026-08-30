@@ -10,6 +10,7 @@ import (
 
 	"github.com/lockdep/stackradar-cli/internal/k8s"
 	"github.com/lockdep/stackradar-cli/internal/kev"
+	"github.com/lockdep/stackradar-cli/internal/pull"
 	"github.com/lockdep/stackradar-cli/internal/scan"
 )
 
@@ -107,6 +108,8 @@ type ImageReport struct {
 	Findings    []Finding `json:"findings,omitempty"`
 	Error       string    `json:"error,omitempty"`
 	Unreachable bool      `json:"unreachable,omitempty"`
+	// Reason is a short phrase for Unreachable images ("credentials rejected (401)").
+	Reason string `json:"reason,omitempty"`
 }
 
 type KEVHit struct {
@@ -127,6 +130,12 @@ type Report struct {
 	Errored     int           `json:"errored_images"`
 	KEVChecked  bool          `json:"kev_checked"`
 	OnlyFixed   bool          `json:"only_fixed,omitempty"`
+	// PullSecretsUsed lists the cluster imagePullSecrets ("ns/name") whose
+	// credentials were read to pull images. Empty when none were needed/readable.
+	PullSecretsUsed []string `json:"pull_secrets_used,omitempty"`
+	// PullSecretsOffered is set when the scanned pods reference imagePullSecrets
+	// that were not read because --use-pull-secrets was not passed.
+	PullSecretsOffered bool `json:"-"`
 }
 
 // ThresholdError is returned when --fail-on is met; main maps it to exit 2.
@@ -174,10 +183,14 @@ func CheckThreshold(rep *Report, failOn string) error {
 type BuildOptions struct {
 	// OnlyFixed drops findings without a known fixed version.
 	OnlyFixed bool
+	// PullSecretsUsed is copied onto the report for disclosure.
+	PullSecretsUsed []string
+	// PullSecretsOffered: pods reference pull secrets we did not read (no --use-pull-secrets).
+	PullSecretsOffered bool
 }
 
 func Build(inv *k8s.Inventory, results []ImageResult, kevSet kev.Set, opts BuildOptions) *Report {
-	rep := &Report{Context: inv.Context, Namespaces: inv.Namespaces, PodCount: inv.PodCount, KEVChecked: kevSet != nil, OnlyFixed: opts.OnlyFixed}
+	rep := &Report{Context: inv.Context, Namespaces: inv.Namespaces, PodCount: inv.PodCount, KEVChecked: kevSet != nil, OnlyFixed: opts.OnlyFixed, PullSecretsUsed: opts.PullSecretsUsed, PullSecretsOffered: opts.PullSecretsOffered}
 	kevHits := map[string]*KEVHit{}
 	for _, r := range results {
 		ir := ImageReport{Image: r.Image, Unreachable: r.Unreachable}
@@ -185,6 +198,7 @@ func Build(inv *k8s.Inventory, results []ImageResult, kevSet kev.Set, opts Build
 			ir.Error = r.Err.Error()
 			if r.Unreachable {
 				rep.Unreachable++
+				ir.Reason = pull.Reason(r.Err)
 			} else {
 				rep.Errored++
 			}

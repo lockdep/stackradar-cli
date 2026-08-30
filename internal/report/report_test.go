@@ -66,7 +66,7 @@ func TestBuild(t *testing.T) {
 		}},
 		// A second image with the same KEV CVE: hit aggregates images + workloads.
 		{Image: img("kev2", "b/p2", "b/p3"), Findings: []scan.Finding{finding("CVE-KEV", 9.5)}},
-		{Image: img("unreach", "a/p2"), Err: errors.New("401"), Unreachable: true},
+		{Image: img("unreach", "a/p2"), Err: errors.New("GET https://reg/token: unexpected status code 401 Unauthorized"), Unreachable: true},
 		{Image: img("broken"), Err: errors.New("boom")},
 	}
 	rep := Build(inv, results, kev.Set{"CVE-KEV": true}, BuildOptions{})
@@ -113,7 +113,7 @@ func TestBuild(t *testing.T) {
 	if strings.Join(h.Images, ",") != "kev,kev2" || strings.Join(h.Workloads, ",") != "b/p1,b/p2,b/p3" {
 		t.Fatalf("hit aggregation images=%v workloads=%v", h.Images, h.Workloads)
 	}
-	if rep.Images[3].Error != "401" || !rep.Images[3].Unreachable || rep.Images[4].Error != "boom" {
+	if !strings.HasSuffix(rep.Images[3].Error, "401 Unauthorized") || !rep.Images[3].Unreachable || rep.Images[3].Reason != "credentials rejected (401)" || rep.Images[4].Error != "boom" {
 		t.Fatalf("errors not carried: %+v %+v", rep.Images[3], rep.Images[4])
 	}
 }
@@ -158,7 +158,7 @@ func TestWriteTable(t *testing.T) {
 			{ID: "CVE-LOW", Package: "curl", Version: "1", CVSS: 2.0},
 			{ID: "CVE-NONE", Package: "bash", Version: "1"},
 		}},
-		{Image: img("reg/private:1", "a/priv"), Err: errors.New("401"), Unreachable: true},
+		{Image: img("reg/private:1", "a/priv"), Err: errors.New("GET https://reg/token: unexpected status code 401 Unauthorized"), Unreachable: true},
 		{Image: img("reg/broken:1", "a/broken"), Err: errors.New("boom")},
 	}
 	rep := Build(inv, results, kev.Set{"CVE-LOW": true}, BuildOptions{})
@@ -166,9 +166,9 @@ func TestWriteTable(t *testing.T) {
 	out := tableFor(t, rep, "high")
 	for _, want := range []string{
 		"3 images · 3 pods · 1 namespaces · context prod",
-		"IMAGE", "not reachable from here", "scan failed",
+		"IMAGE", "not reachable from here: credentials rejected (401)", "scan failed",
 		"1 critical, 0 high, 1 medium, 1 low (1 unscored)",
-		"1 image(s) live in a registry", "1 image(s) failed to scan",
+		"1 image(s) could not be pulled", "index.docker.io — no credentials for this registry, or the stored login expired. Run `docker login index.docker.io`", "1 image(s) failed to scan",
 		"1 vulnerability in CISA", "CVE-LOW", "a/nginx",
 		"Findings (≥ high;", "CVE-CRIT", "FIXED IN", "CVE-LOW        Low       2.0   KEV", // KEV shown even below the threshold
 	} {

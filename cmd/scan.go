@@ -26,23 +26,24 @@ import (
 )
 
 var scanOpts struct {
-	kubeconfig  string
-	kubeContext string
-	images      []string
-	namespaces  []string
-	excludeNS   []string
-	allNS       bool
-	concurrency int
-	noKEV       bool
-	timeout     time.Duration
-	minSeverity string
-	format      string
-	file        string
-	failOn      string
-	onlyFixed   bool
-	serve       bool
-	port        int
-	noOpen      bool
+	kubeconfig     string
+	kubeContext    string
+	images         []string
+	namespaces     []string
+	excludeNS      []string
+	allNS          bool
+	concurrency    int
+	noKEV          bool
+	timeout        time.Duration
+	minSeverity    string
+	format         string
+	file           string
+	failOn         string
+	onlyFixed      bool
+	serve          bool
+	port           int
+	noOpen         bool
+	usePullSecrets bool
 }
 
 var scanCmd = &cobra.Command{
@@ -53,7 +54,11 @@ actually running, not what the tag points at today), pulls each unique image
 with your local registry credentials, and matches its packages against OSV.
 
 Nothing about your cluster is sent to StackRadar. The only network calls are
-to your container registries, api.osv.dev and (unless --no-kev) cisa.gov.`,
+to your container registries, api.osv.dev and (unless --no-kev) cisa.gov.
+
+Cluster secrets are never read unless you pass --use-pull-secrets; then the
+imagePullSecrets referenced by the scanned pods are read through your
+kubeconfig, used in memory for the pull, and never written anywhere.`,
 	RunE: runScan,
 }
 
@@ -75,6 +80,7 @@ func init() {
 	f.BoolVar(&scanOpts.serve, "serve", false, "open the report in your browser (served from localhost, nothing leaves the machine)")
 	f.IntVar(&scanOpts.port, "port", 8000, "port for --serve (0 picks a free one)")
 	f.BoolVar(&scanOpts.noOpen, "no-open", false, "with --serve: print the URL instead of launching a browser")
+	f.BoolVar(&scanOpts.usePullSecrets, "use-pull-secrets", false, "also pull with the cluster's imagePullSecrets (read via your kubeconfig, used in memory only)")
 	rootCmd.AddCommand(scanCmd)
 }
 
@@ -151,6 +157,23 @@ func runScan(cmd *cobra.Command, _ []string) error {
 	}
 	prog.ImagesListed(len(inv.Images), inv.PodCount, len(inv.Namespaces), inv.Context)
 
+	// 1b. Registry credentials: local docker login, plus — only when asked —
+	// the imagePullSecrets the scanned pods use (if RBAC lets us read them).
+	var secrets *k8s.PullSecrets
+	if scanOpts.usePullSecrets && len(inv.PullSecretRefs) > 0 {
+		secrets, err = k8s.LoadPullSecrets(ctx, k8s.Options{Kubeconfig: scanOpts.kubeconfig, Context: scanOpts.kubeContext}, inv.PullSecretRefs)
+		if err != nil {
+			prog.Note("could not read imagePullSecrets (%v); using local docker credentials only", err)
+			secrets = nil
+		} else {
+			prog.PullSecretsLoaded(secrets.Loaded, secrets.Skipped)
+		}
+	}
+	keychain := pull.Keychain()
+	if secrets != nil && secrets.Len() > 0 {
+		keychain = pull.Keychain(secrets)
+	}
+
 	// 2. KEV catalogue, fetched concurrently with the pulls.
 	var kevSet kev.Set
 	var kevWG sync.WaitGroup
@@ -181,7 +204,7 @@ func runScan(cmd *cobra.Command, _ []string) error {
 
 			res := report.ImageResult{Image: img}
 			prog.Image(img.Display(), ui.Pulling, ui.Outcome{})
-			tar, err := pull.ToTarball(ctx, img.Ref)
+			tar, err := pull.ToTarball(ctx, img.Ref, keychain)
 			if err != nil {
 				res.Err = err
 				res.Unreachable = pull.IsAuthOrNotFound(err)
@@ -201,7 +224,11 @@ func runScan(cmd *cobra.Command, _ []string) error {
 		return ctx.Err()
 	}
 
-	rep := report.Build(inv, results, kevSet, report.BuildOptions{OnlyFixed: scanOpts.onlyFixed})
+	buildOpts := report.BuildOptions{OnlyFixed: scanOpts.onlyFixed, PullSecretsOffered: !scanOpts.usePullSecrets && len(inv.PullSecretRefs) > 0}
+	if secrets != nil {
+		buildOpts.PullSecretsUsed = secrets.Loaded
+	}
+	rep := report.Build(inv, results, kevSet, buildOpts)
 
 	var page []byte
 	if scanOpts.format == "html" || scanOpts.serve {

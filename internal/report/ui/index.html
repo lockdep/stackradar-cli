@@ -80,7 +80,7 @@
   .btn.icon { width: 30px; padding: 0; justify-content: center; }
   .btn.icon svg { width: 16px; height: 16px; }
 
-  .wrap { max-width: 1240px; margin: 0 auto; padding: 24px; }
+  .wrap { max-width: 1440px; margin: 0 auto; padding: 24px; }
   h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; }
   .sub { color: var(--ink-muted); font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px 14px; }
   .sub b { color: var(--ink-secondary); font-weight: 500; }
@@ -191,6 +191,24 @@
   .fix { color: var(--success); }
   .nofix { color: var(--ink-faint); }
 
+  /* ---- vulnerabilities table: identifiers never wrap mid-token, long package paths may ---- */
+  td.nowrap, th.nowrap { white-space: nowrap; }
+  td.sev { white-space: nowrap; }
+  .adv { display: flex; flex-direction: column; gap: 2px; }
+  .adv .aliases { display: flex; flex-wrap: wrap; gap: 2px 8px; color: var(--ink-faint); font-size: 11px; }
+  .adv .aliases span { white-space: nowrap; }
+  .pkg { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .pkg .name { word-break: break-word; overflow-wrap: anywhere; }
+  .pkg .eco { color: var(--ink-muted); font-size: 11.5px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif; }
+  .vuln-summary { margin: 0 0 12px; font-size: 13px; color: var(--ink-secondary); max-width: 90ch; }
+  .vuln-summary a { margin-left: 6px; font-size: 12px; }
+  .detail-inner .img-cell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .detail-inner .img-cell .repo { font-weight: 500; overflow-wrap: anywhere; }
+  .detail-inner table.vimg th:first-child { min-width: 340px; width: 40%; }
+  .detail-inner .img-cell .digest { color: var(--ink-faint); font-size: 11px; }
+  .detail-inner table.vimg td { white-space: normal; vertical-align: top; }
+  .detail-inner table.vimg td.nowrap { white-space: nowrap; }
+
   /* ---- kubernetes cues: ⎈ context, namespace chips, pod chips ---- */
   .helm { color: var(--accent); font-weight: 400; }
   .ctx {
@@ -218,6 +236,14 @@
   }
   .pod svg { width: 10px; height: 10px; color: var(--accent); flex-shrink: 0; }
   .pod .pfx { color: var(--ink-faint); }
+  .wl { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+  .wl .kind {
+    font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--accent);
+    background: var(--accent-subtle); border: 1px solid var(--accent-muted); border-radius: 4px; padding: 0 5px; white-space: nowrap;
+  }
+  .wl .name { font-family: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace; font-size: 12.5px; overflow-wrap: anywhere; }
+  .wl .name .pfx { color: var(--ink-faint); }
+  .detail-inner .wl-pods { margin-bottom: 10px; }
 
   /* ---- closing card ---- */
   .cta { margin-top: 32px; border: 1px solid var(--attention); border-left-width: 4px; background: var(--surface-raised); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden; }
@@ -278,6 +304,7 @@
   <nav class="tabs" role="tablist">
     <button class="tab" role="tab" data-tab="images" aria-selected="true">Images <span class="n" id="n-images"></span></button>
     <button class="tab" role="tab" data-tab="vulns" aria-selected="false">Vulnerabilities <span class="n" id="n-vulns"></span></button>
+    <button class="tab" role="tab" data-tab="workloads" aria-selected="false">Workloads <span class="n" id="n-workloads"></span></button>
   </nav>
 
   <div class="toolbar">
@@ -314,6 +341,7 @@
     <div class="scroll">
       <table>
         <thead><tr>
+          <th style="width:14px"></th>
           <th class="sortable" data-sort="id">Advisory<span class="arrow"></span></th>
           <th class="sortable" data-sort="sev">Severity<span class="arrow"></span></th>
           <th class="sortable" data-sort="pkg">Package<span class="arrow"></span></th>
@@ -323,6 +351,22 @@
           <th class="sortable num" data-sort="pods">Pods<span class="arrow"></span></th>
         </tr></thead>
         <tbody id="vulns-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card hidden" id="panel-workloads">
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th style="width:14px"></th>
+          <th>Workload</th>
+          <th>Severity</th>
+          <th class="num">KEV</th>
+          <th class="num">Pods</th>
+          <th class="num">Images</th>
+        </tr></thead>
+        <tbody id="workloads-body"></tbody>
       </table>
     </div>
   </section>
@@ -439,7 +483,41 @@
       row.pods.forEach(function (p) { v.pods[p] = 1; });
     });
   });
-  var vulnRows = Object.keys(vulnMap).map(function (k) { var v = vulnMap[k]; v.podCount = Object.keys(v.pods).length; return v; });
+  var vulnRows = Object.keys(vulnMap).map(function (k) { var v = vulnMap[k]; v.key = k; v.podCount = Object.keys(v.pods).length; return v; });
+  // workloads: one row per controller (Deployment, DaemonSet, ...) from image.owners, with every image its pods run.
+  // Reports written before owners existed fall back to one row per pod. Findings are unioned across images at render time.
+  var wlMap = {};
+  imageRows.forEach(function (row) {
+    var owners = row.ir.image.owners;
+    if (!owners || !owners.length) {
+      owners = row.pods.map(function (p) { var i = p.indexOf('/'); return { kind: 'Pod', namespace: i > 0 ? p.slice(0, i) : '', name: i > 0 ? p.slice(i + 1) : p, pods: [p] }; });
+    }
+    owners.forEach(function (o) {
+      var k = o.namespace + '/' + o.kind + '/' + o.name;
+      var w = wlMap[k];
+      if (!w) w = wlMap[k] = { key: k, ns: o.namespace, kind: o.kind, name: o.name, pods: [], images: [] };
+      (o.pods || []).forEach(function (p) { if (w.pods.indexOf(p) < 0) w.pods.push(p); });
+      if (w.images.indexOf(row) < 0) w.images.push(row);
+    });
+  });
+  Object.keys(wlMap).forEach(function (k) { wlMap[k].pods.sort(); });
+  function findingKey(f) { return f.id + ' ' + f.package + ' ' + f.version; }
+  function workloadName(w) {
+    return '<span class="wl"><span class="kind">' + esc(w.kind) + '</span><span class="name"><span class="pfx">' + esc(w.ns) + '/</span>' + esc(w.name) + '</span></span>';
+  }
+  // Worst-first like the Images tab: KEV, then critical, high, medium, low; name breaks ties.
+  var workloadRows = Object.keys(wlMap).map(function (k) {
+    var w = wlMap[k], seen = {}, c = { critical: 0, high: 0, medium: 0, low: 0, kev: 0 };
+    w.images.forEach(function (row) { row.findings.forEach(function (f) {
+      var fk = findingKey(f); if (seen[fk]) return; seen[fk] = 1;
+      if (f.severity in c) c[f.severity]++; if (f.kev) c.kev++;
+    }); });
+    w.rank = [c.kev, c.critical, c.high, c.medium, c.low];
+    return w;
+  }).sort(function (a, b) {
+    for (var i = 0; i < 5; i++) if (a.rank[i] !== b.rank[i]) return b.rank[i] - a.rank[i];
+    return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+  });
 
   // ---- tiles ----
   var T = R.totals;
@@ -474,6 +552,8 @@
   });
   var onlySev = null; // from tiles: exact severity bucket
   var openImages = {};
+  var openVulns = {};
+  var openWorkloads = {};
   var tab = 'images';
   var sort = { key: 'sev', dir: -1 };
 
@@ -557,22 +637,80 @@
       }
     });
     document.getElementById('vulns-body').innerHTML = vrows.length ? vrows.map(function (v) {
-      var f = v.f;
-      return '<tr>' +
-        '<td class="mono"><a href="' + osvLink(f.id) + '" target="_blank" rel="noopener" title="' + esc(f.summary || '') + '">' + esc(f.id) + '</a>' + (f.kev ? '<span class="kevstar" title="Known exploited (CISA KEV)">★</span>' : '') +
-          (f.aliases && f.aliases.length ? '<div class="digest mono" style="color:var(--ink-faint);font-size:11px">' + f.aliases.slice(0, 3).map(esc).join(' · ') + '</div>' : '') + '</td>' +
-        '<td>' + sevBadge(f) + '</td>' +
-        '<td class="mono">' + esc(f.package) + ' <span class="muted">' + esc(f.ecosystem || '') + '</span></td>' +
-        '<td class="mono">' + esc(f.version) + '</td>' +
-        '<td class="mono">' + (f.fixed ? '<span class="fix">' + esc(f.fixed) + '</span>' : '<span class="nofix">none</span>') + '</td>' +
+      var f = v.f, isOpen = !!openVulns[v.key];
+      var aliases = (f.aliases || []).filter(function (a) { return a !== f.id; });
+      var html = '<tr class="row' + (isOpen ? ' open' : '') + '" data-k="' + esc(v.key) + '">' +
+        '<td><span class="chev">▶</span></td>' +
+        '<td class="nowrap"><div class="adv"><span class="mono"><a href="' + osvLink(f.id) + '" target="_blank" rel="noopener" title="' + esc(f.summary || '') + '">' + esc(f.id) + '</a>' + (f.kev ? '<span class="kevstar" title="Known exploited (CISA KEV)">★</span>' : '') + '</span>' +
+          (aliases.length ? '<span class="aliases mono">' + aliases.slice(0, 3).map(function (a) { return '<span>' + esc(a) + '</span>'; }).join('') + (aliases.length > 3 ? '<span>+' + (aliases.length - 3) + '</span>' : '') + '</span>' : '') + '</div></td>' +
+        '<td class="sev">' + sevBadge(f) + '</td>' +
+        '<td><div class="pkg"><span class="name mono">' + esc(f.package) + '</span>' + (f.ecosystem ? '<span class="eco">' + esc(f.ecosystem) + '</span>' : '') + '</div></td>' +
+        '<td class="mono nowrap">' + esc(f.version) + '</td>' +
+        '<td class="mono nowrap">' + (f.fixed ? '<span class="fix">' + esc(f.fixed) + '</span>' : '<span class="nofix">none</span>') + '</td>' +
         '<td class="num" title="' + esc(v.images.map(function (r) { return r.repo; }).join('\n')) + '">' + v.images.length + '</td>' +
         '<td class="num">' + v.podCount + '</td></tr>';
-    }).join('') : '<tr><td colspan="7" class="empty">No vulnerabilities match.</td></tr>';
+      if (isOpen) html += '<tr class="detail"><td colspan="8"><div class="detail-inner">' + vulnDetail(v, aliases) + '</div></td></tr>';
+      return html;
+    }).join('') : '<tr><td colspan="8" class="empty">No vulnerabilities match.</td></tr>';
+
+    // Workloads tab: severity is the union of findings across the pod's images under the current filters.
+    var shownWorkloads = 0, wbody = '';
+    workloadRows.forEach(function (w) {
+      if (ns && w.ns !== ns) return;
+      var podText = !text || (w.key + ' ' + w.pods.join(' ')).toLowerCase().indexOf(text) >= 0;
+      var seen = {}, c = { critical: 0, high: 0, medium: 0, low: 0, unknown: 0, kev: 0 }, anyImgText = false;
+      var perImage = w.images.map(function (row) {
+        var imgText = podText || matchImageText(row, text);
+        if (imgText) anyImgText = true;
+        var fs = row.findings.filter(function (f) { return matchFinding(f, imgText ? '' : text); });
+        fs.forEach(function (f) {
+          var k = findingKey(f); if (seen[k]) return; seen[k] = 1;
+          c[f.severity in SEV ? f.severity : 'unknown']++; if (f.kev) c.kev++;
+        });
+        return { row: row, findings: fs };
+      });
+      var total = Object.keys(seen).length;
+      if (!anyImgText && !total) return;
+      if (anyFilterActive() && !total && w.images.some(function (r) { return (r.ir.findings || []).length; })) return;
+      shownWorkloads++;
+      var isOpen = !!openWorkloads[w.key];
+      wbody += '<tr class="row' + (isOpen ? ' open' : '') + '" data-k="' + esc(w.key) + '">' +
+        '<td><span class="chev">▶</span></td>' +
+        '<td>' + workloadName(w) + '</td>' +
+        '<td><span class="sqs">' + sq(c.critical, 'critical') + sq(c.high, 'high') + sq(c.medium, 'medium') + sq(c.low, 'low') + '</span>' +
+          (c.unknown ? ' <span class="badge unknown" title="' + UNSCORED_HINT + '">' + c.unknown + ' unscored</span>' : '') + '</td>' +
+        '<td class="num">' + (c.kev ? '<span class="badge kev">★ ' + c.kev + '</span>' : '<span class="muted">–</span>') + '</td>' +
+        '<td class="num">' + w.pods.length + '</td>' +
+        '<td class="num">' + w.images.length + '</td></tr>';
+      if (isOpen) {
+        wbody += '<tr class="detail"><td colspan="6"><div class="detail-inner">' +
+          (w.kind !== 'Pod' ? '<div class="wl-pods">' + podChips(w.pods, 12) + '</div>' : '') +
+          '<table class="vimg"><thead><tr><th>Image</th><th>Severity</th><th class="num">KEV</th><th>Status</th></tr></thead><tbody>' +
+          perImage.map(function (pi) {
+            var ic = { critical: 0, high: 0, medium: 0, low: 0, unknown: 0, kev: 0 };
+            pi.findings.forEach(function (f) { ic[f.severity in SEV ? f.severity : 'unknown']++; if (f.kev) ic.kev++; });
+            var ir = pi.row.ir;
+            var status = ir.unreachable ? '<span class="badge status">not reachable from here</span>'
+              : ir.error ? '<span class="badge status" title="' + esc(ir.error) + '">scan failed</span>' : '';
+            return '<tr><td><div class="img-cell mono"><span class="repo">' + esc(pi.row.repo) + '</span>' + (pi.row.digest ? '<span class="digest">sha256:' + esc(pi.row.digest) + '</span>' : '') + '</div></td>' +
+              '<td class="nowrap"><span class="sqs">' + sq(ic.critical, 'critical') + sq(ic.high, 'high') + sq(ic.medium, 'medium') + sq(ic.low, 'low') + '</span>' +
+                (ic.unknown ? ' <span class="badge unknown" title="' + UNSCORED_HINT + '">' + ic.unknown + ' unscored</span>' : '') + '</td>' +
+              '<td class="num nowrap">' + (ic.kev ? '<span class="badge kev">★ ' + ic.kev + '</span>' : '<span class="muted">–</span>') + '</td>' +
+              '<td>' + status + '</td></tr>';
+          }).join('') + '</tbody></table>' +
+          (total !== perImage.reduce(function (s, pi) { return s + pi.findings.length; }, 0)
+            ? '<p class="vuln-summary" style="margin:10px 0 0">' + n(total) + ' distinct ' + plural(total, 'vulnerability', 'vulnerabilities') + ' across ' + w.images.length + ' images — the same advisory in several images is counted once for the pod.</p>' : '') +
+          '</div></td></tr>';
+      }
+    });
+    document.getElementById('workloads-body').innerHTML = wbody || '<tr><td colspan="6" class="empty">No workloads match.</td></tr>';
 
     document.getElementById('n-images').textContent = R.images.length;
     document.getElementById('n-vulns').textContent = vulnRows.length;
+    document.getElementById('n-workloads').textContent = workloadRows.length;
     document.getElementById('count').textContent = tab === 'images'
       ? shownImages + ' of ' + R.images.length + ' images'
+      : tab === 'workloads' ? shownWorkloads + ' of ' + workloadRows.length + ' workloads'
       : vrows.length + ' of ' + vulnRows.length + ' vulnerabilities';
     document.querySelectorAll('th.sortable').forEach(function (th) {
       th.querySelector('.arrow').textContent = th.dataset.sort === sort.key ? (sort.dir < 0 ? '▼' : '▲') : '';
@@ -598,6 +736,23 @@
     return '<dl class="img-info">' + rows.map(function (r) { return '<dt>' + r[0] + '</dt><dd>' + r[1] + '</dd>'; }).join('') + '</dl>';
   }
   function uniq(a) { return a.filter(function (x, i) { return a.indexOf(x) === i; }); }
+  // Expanded vulnerability row: the advisory text, every alias, and each image it was found in with the pods running it.
+  function vulnDetail(v, aliases) {
+    var f = v.f, out = '';
+    if (f.summary || aliases.length) {
+      out += '<p class="vuln-summary">' + esc(f.summary || '') +
+        (aliases.length ? '<span class="muted mono" style="display:block;margin-top:4px;font-size:11.5px">' + aliases.map(esc).join(' · ') + '</span>' : '') +
+        '<a href="' + osvLink(f.id) + '" target="_blank" rel="noopener">osv.dev ↗</a></p>';
+    }
+    out += '<table class="vimg"><thead><tr><th>Image</th><th>Installed</th><th>Fixed in</th><th>Pods</th></tr></thead><tbody>' +
+      v.images.map(function (row) {
+        return '<tr><td><div class="img-cell mono"><span class="repo">' + esc(row.repo) + '</span>' + (row.digest ? '<span class="digest">sha256:' + esc(row.digest) + '</span>' : '') + '</div></td>' +
+          '<td class="mono nowrap">' + esc(f.version) + '</td>' +
+          '<td class="mono nowrap">' + (f.fixed ? '<span class="fix">' + esc(f.fixed) + '</span>' : '<span class="nofix">none</span>') + '</td>' +
+          '<td>' + (row.pods.length ? podChips(row.pods, 12) : '<span class="muted">not running in any pod</span>') + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    return out;
+  }
   function sevBadge(f) {
     var s = f.severity in SEV ? f.severity : 'unknown';
     return '<span class="badge ' + s + '"' + (s === 'unknown' ? ' title="' + UNSCORED_HINT + '"' : '') + '>' + (s === 'unknown' ? 'Unscored' : s) + '</span>' +
@@ -627,12 +782,27 @@
     if (openImages[i]) delete openImages[i]; else openImages[i] = 1;
     render();
   });
+  document.getElementById('vulns-body').addEventListener('click', function (e) {
+    if (e.target.closest('a')) return;
+    var tr = e.target.closest('tr.row'); if (!tr) return;
+    var k = tr.dataset.k;
+    if (openVulns[k]) delete openVulns[k]; else openVulns[k] = 1;
+    render();
+  });
+  document.getElementById('workloads-body').addEventListener('click', function (e) {
+    if (e.target.closest('a')) return;
+    var tr = e.target.closest('tr.row'); if (!tr) return;
+    var k = tr.dataset.k;
+    if (openWorkloads[k]) delete openWorkloads[k]; else openWorkloads[k] = 1;
+    render();
+  });
   document.querySelectorAll('.tab').forEach(function (t) {
     t.addEventListener('click', function () {
       tab = t.dataset.tab;
       document.querySelectorAll('.tab').forEach(function (x) { x.setAttribute('aria-selected', String(x === t)); });
       document.getElementById('panel-images').classList.toggle('hidden', tab !== 'images');
       document.getElementById('panel-vulns').classList.toggle('hidden', tab !== 'vulns');
+      document.getElementById('panel-workloads').classList.toggle('hidden', tab !== 'workloads');
       render();
     });
   });
@@ -648,7 +818,7 @@
     'Point-in-time snapshot generated on this machine by <code>stackradar scan</code>. Nothing about your cluster was sent to StackRadar: ' +
     'image pulls went to your registries, package names/versions to <code>api.osv.dev</code>' + (R.kev_checked ? ', one GET to <code>cisa.gov</code>' : '') + '. ' +
     'Severity is the CVSS base score OSV publishes; advisories without one are shown as <em>Unscored</em>, not dropped. ' +
-    'Images are worst-first (KEV, then critical, then high). Click an image to expand its findings.';
+    'Images are worst-first (KEV, then critical, then high). Click an image to expand its findings, or a vulnerability to see which images and pods carry it.';
 
   render();
 })();

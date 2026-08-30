@@ -154,4 +154,15 @@ func TestFindingCVEs(t *testing.T) {
 	if got := (Finding{ID: "GHSA-x"}).CVEs(); got != nil {
 		t.Fatalf("got %v", got)
 	}
+	// Ubuntu USN records only carry the CVE as a distro-namespaced alias;
+	// it must still resolve to the bare CVE (and not be duplicated when both
+	// forms are present) so the KEV check can match it.
+	usn := Finding{ID: "USN-8226-1", Aliases: []string{"USN-8226-1", "UBUNTU-CVE-2026-31431"}}
+	if got := usn.CVEs(); !reflect.DeepEqual(got, []string{"CVE-2026-31431"}) {
+		t.Fatalf("got %v", got)
+	}
+	both := Finding{ID: "CVE-2026-31431", Aliases: []string{"UBUNTU-CVE-2026-31431", "DEBIAN-CVE-2026-31431"}}
+	if got := both.CVEs(); !reflect.DeepEqual(got, []string{"CVE-2026-31431"}) {
+		t.Fatalf("got %v", got)
+	}
 }

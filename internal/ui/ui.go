@@ -17,6 +17,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"golang.org/x/term"
+
+	"github.com/lockdep/stackradar-cli/internal/pull"
 )
 
 // Phase of one image's life inside the scan.
@@ -53,6 +55,9 @@ type Progress interface {
 	Image(ref string, phase Phase, out Outcome)
 	// Note prints a free-form line (warnings that must survive the live view).
 	Note(format string, a ...any)
+	// PullSecretsLoaded reports which cluster imagePullSecrets were read for
+	// registry credentials and which referenced ones could not be.
+	PullSecretsLoaded(loaded, skipped []string)
 	// Close stops the live view and leaves the final task list on screen.
 	Close()
 	// OnInterrupt registers what to do when the user presses Ctrl-C / Esc in the live view.
@@ -267,6 +272,8 @@ func (l *live) KEVSkipped() {
 	l.kevDone, l.kevSkipped = true, true
 	l.mu.Unlock()
 }
+
+func (l *live) PullSecretsLoaded(loaded, skipped []string) { pullSecretsNote(l, loaded, skipped) }
 
 func (l *live) Note(format string, a ...any) {
 	l.mu.Lock()
@@ -507,14 +514,28 @@ func (p *plain) Image(ref string, ph Phase, out Outcome) {
 	switch {
 	case out.Unreachable:
 		suffix = "not reachable from this machine"
+		if r := pull.Reason(out.Err); r != "" {
+			suffix += ": " + r
+		}
 	case out.Err != nil:
 		suffix = "error: " + out.Err.Error()
 	}
 	p.printf("  [%d/%d] %s  %s", done, total, ref, suffix)
 }
 
-func (p *plain) Note(format string, a ...any) { p.printf(format, a...) }
-func (p *plain) Close()                       {}
+func (p *plain) Note(format string, a ...any)               { p.printf(format, a...) }
+func (p *plain) PullSecretsLoaded(loaded, skipped []string) { pullSecretsNote(p, loaded, skipped) }
+
+// pullSecretsNote is the shared wording for PullSecretsLoaded.
+func pullSecretsNote(p Progress, loaded, skipped []string) {
+	if len(loaded) > 0 {
+		p.Note("Using registry credentials from %d cluster imagePullSecret(s): %s", len(loaded), strings.Join(loaded, ", "))
+	}
+	for _, s := range skipped {
+		p.Note("imagePullSecret %s — skipped", s)
+	}
+}
+func (p *plain) Close() {}
 
 func (p *plain) printf(format string, a ...any) {
 	p.mu.Lock()
@@ -529,6 +550,7 @@ type nopProgress struct{}
 func (nopProgress) ImagesListed(int, int, int, string) {}
 func (nopProgress) KEVLoaded(int, error)               {}
 func (nopProgress) KEVSkipped()                        {}
+func (nopProgress) PullSecretsLoaded(_, _ []string)    {}
 func (nopProgress) Image(string, Phase, Outcome)       {}
 func (nopProgress) Note(string, ...any)                {}
 func (nopProgress) Close()                             {}

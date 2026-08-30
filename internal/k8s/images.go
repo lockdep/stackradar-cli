@@ -33,7 +33,22 @@ type Image struct {
 	Workloads []string `json:"workloads"`
 	// Digest is the raw sha256 when known.
 	Digest string `json:"digest,omitempty"`
+	// Owners groups Workloads by the controller that created them
+	// (Deployment, DaemonSet, StatefulSet, CronJob, ...). Bare pods are kind "Pod".
+	Owners []Owner `json:"owners,omitempty"`
 }
+
+// Owner is the top-level controller behind one or more pods, resolved through
+// intermediate ReplicaSets and Jobs so that a Deployment's pods collapse to it.
+type Owner struct {
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+	// Pods is "namespace/pod" for each of this owner's pods running the image.
+	Pods []string `json:"pods"`
+}
+
+func (o Owner) key() string { return o.Namespace + "/" + o.Kind + "/" + o.Name }
 
 // Name returns repo:tag without the digest, for the summary table where the
 // column width matters more than pinning; Display carries the digest.
@@ -71,6 +86,9 @@ type Inventory struct {
 	Namespaces []string `json:"namespaces"`
 	PodCount   int      `json:"pod_count"`
 	Images     []Image  `json:"images"`
+	// PullSecretRefs are the imagePullSecrets (pod- and service-account-level)
+	// referenced by the running pods, deduplicated. Not serialised.
+	PullSecretRefs []SecretRef `json:"-"`
 }
 
 // InventoryFromRefs builds an inventory from explicit image references
@@ -96,7 +114,8 @@ func InventoryFromRefs(refs []string) *Inventory {
 	return inv
 }
 
-func ListRunningImages(ctx context.Context, o Options) (*Inventory, error) {
+// newClient builds a clientset for o and returns the resolved context name.
+func newClient(o Options) (*kubernetes.Clientset, string, error) {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
 	if o.Kubeconfig != "" {
 		rules.ExplicitPath = o.Kubeconfig
@@ -106,22 +125,30 @@ func ListRunningImages(ctx context.Context, o Options) (*Inventory, error) {
 
 	raw, err := cc.RawConfig()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	ctxName := o.Context
 	if ctxName == "" {
 		ctxName = raw.CurrentContext
 	}
 	if ctxName == "" {
-		return nil, fmt.Errorf("no current kubeconfig context; pass --context")
+		return nil, "", fmt.Errorf("no current kubeconfig context; pass --context")
 	}
 
 	rest, err := cc.ClientConfig()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	rest.UserAgent = "stackradar-cli"
 	cs, err := kubernetes.NewForConfig(rest)
+	if err != nil {
+		return nil, "", err
+	}
+	return cs, ctxName, nil
+}
+
+func ListRunningImages(ctx context.Context, o Options) (*Inventory, error) {
+	cs, ctxName, err := newClient(o)
 	if err != nil {
 		return nil, err
 	}
@@ -133,6 +160,10 @@ func ListRunningImages(ctx context.Context, o Options) (*Inventory, error) {
 
 	byKey := map[string]*Image{}
 	nsSeen := map[string]bool{}
+	secretSeen := map[SecretRef]bool{}
+	saCache := map[string][]string{}
+	owners := &ownerResolver{cs: cs, cache: map[string]metav1.OwnerReference{}}
+	var secretRefs []SecretRef
 	pods := 0
 	for _, ns := range namespaces {
 		if contains(o.ExcludeNamespaces, ns) {
@@ -148,6 +179,12 @@ func ListRunningImages(ctx context.Context, o Options) (*Inventory, error) {
 			}
 			pods++
 			nsSeen[pod.Namespace] = true
+			for _, ref := range collectPullSecretRefs(ctx, cs, &pod, saCache) {
+				if !secretSeen[ref] {
+					secretSeen[ref] = true
+					secretRefs = append(secretRefs, ref)
+				}
+			}
 			specImages := map[string]string{}
 			for _, c := range pod.Spec.InitContainers {
 				specImages[c.Name] = c.Image
@@ -176,22 +213,111 @@ func ListRunningImages(ctx context.Context, o Options) (*Inventory, error) {
 				wl := pod.Namespace + "/" + pod.Name
 				if !contains(img.Workloads, wl) {
 					img.Workloads = append(img.Workloads, wl)
+					img.addOwner(owners.resolve(ctx, &pod), wl)
 				}
 			}
 		}
 	}
 
-	inv := &Inventory{Context: ctxName, PodCount: pods}
+	inv := &Inventory{Context: ctxName, PodCount: pods, PullSecretRefs: secretRefs}
 	for ns := range nsSeen {
 		inv.Namespaces = append(inv.Namespaces, ns)
 	}
 	sort.Strings(inv.Namespaces)
 	for _, img := range byKey {
 		sort.Strings(img.Workloads)
+		for i := range img.Owners {
+			sort.Strings(img.Owners[i].Pods)
+		}
+		sort.Slice(img.Owners, func(a, b int) bool { return img.Owners[a].key() < img.Owners[b].key() })
 		inv.Images = append(inv.Images, *img)
 	}
 	sort.Slice(inv.Images, func(a, b int) bool { return inv.Images[a].Ref < inv.Images[b].Ref })
 	return inv, nil
+}
+
+func (i *Image) addOwner(o Owner, pod string) {
+	for k := range i.Owners {
+		if i.Owners[k].key() == o.key() {
+			if !contains(i.Owners[k].Pods, pod) {
+				i.Owners[k].Pods = append(i.Owners[k].Pods, pod)
+			}
+			return
+		}
+	}
+	o.Pods = []string{pod}
+	i.Owners = append(i.Owners, o)
+}
+
+// ownerResolver walks controller owner references up to the object a user
+// would recognise: ReplicaSet -> Deployment, Job -> CronJob. Lookups are
+// cached per object; if one fails (RBAC, object already gone) the
+// intermediate object is reported as the owner rather than failing the scan.
+type ownerResolver struct {
+	cs    kubernetes.Interface
+	cache map[string]metav1.OwnerReference // "ns/Kind/name" -> its controller ref (empty Kind = none)
+}
+
+func controllerRef(refs []metav1.OwnerReference) (metav1.OwnerReference, bool) {
+	for _, r := range refs {
+		if r.Controller != nil && *r.Controller {
+			return r, true
+		}
+	}
+	if len(refs) > 0 {
+		return refs[0], true
+	}
+	return metav1.OwnerReference{}, false
+}
+
+func (r *ownerResolver) resolve(ctx context.Context, pod *corev1.Pod) Owner {
+	ref, ok := controllerRef(pod.OwnerReferences)
+	if !ok {
+		return Owner{Kind: "Pod", Namespace: pod.Namespace, Name: pod.Name}
+	}
+	ns := pod.Namespace
+	switch ref.Kind {
+	case "ReplicaSet":
+		if parent, ok := r.parentOf(ctx, ns, ref); ok {
+			return Owner{Kind: parent.Kind, Namespace: ns, Name: parent.Name}
+		}
+	case "Job":
+		if parent, ok := r.parentOf(ctx, ns, ref); ok {
+			return Owner{Kind: parent.Kind, Namespace: ns, Name: parent.Name}
+		}
+	}
+	return Owner{Kind: ref.Kind, Namespace: ns, Name: ref.Name}
+}
+
+// parentOf returns the controller of a ReplicaSet or Job, fetching it once.
+func (r *ownerResolver) parentOf(ctx context.Context, ns string, ref metav1.OwnerReference) (metav1.OwnerReference, bool) {
+	key := ns + "/" + ref.Kind + "/" + ref.Name
+	if p, ok := r.cache[key]; ok {
+		return p, p.Kind != ""
+	}
+	var refs []metav1.OwnerReference
+	switch ref.Kind {
+	case "ReplicaSet":
+		rs, err := r.cs.AppsV1().ReplicaSets(ns).Get(ctx, ref.Name, metav1.GetOptions{})
+		if err != nil {
+			r.cache[key] = metav1.OwnerReference{}
+			return metav1.OwnerReference{}, false
+		}
+		refs = rs.OwnerReferences
+	case "Job":
+		job, err := r.cs.BatchV1().Jobs(ns).Get(ctx, ref.Name, metav1.GetOptions{})
+		if err != nil {
+			r.cache[key] = metav1.OwnerReference{}
+			return metav1.OwnerReference{}, false
+		}
+		refs = job.OwnerReferences
+	}
+	p, ok := controllerRef(refs)
+	if !ok {
+		p = metav1.OwnerReference{}
+	}
+	r.cache[key] = p
+	return p, ok
 }
 
 // resolve turns the kubelet's (image, imageID) pair into a pullable reference.

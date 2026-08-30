@@ -34,3 +34,39 @@ func TestIsAuthOrNotFound(t *testing.T) {
 		}
 	}
 }
+
+func TestReason(t *testing.T) {
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{nil, ""},
+		{errors.New("dial tcp: i/o timeout"), ""},
+		{&transport.Error{StatusCode: http.StatusInternalServerError}, ""},
+		{&transport.Error{StatusCode: http.StatusUnauthorized}, "credentials rejected (401)"},
+		{&transport.Error{StatusCode: http.StatusForbidden}, "access denied (403)"},
+		{&transport.Error{StatusCode: http.StatusNotFound}, "not found (404)"},
+		// DigitalOcean's token endpoint 401s as a plain error, not a transport.Error.
+		{errors.New("GET https://api.digitalocean.com/v2/registry/auth?scope=x: unexpected status code 401 Unauthorized: {}"), "credentials rejected (401)"},
+		{errors.New("lookup reg.internal: no such host"), "cannot resolve host"},
+		{errors.New("DENIED: requested access to the resource is denied"), "access denied (403)"},
+		{errors.New("MANIFEST_UNKNOWN: manifest unknown"), "not found (404)"},
+	}
+	for _, c := range cases {
+		if got := Reason(c.err); got != c.want {
+			t.Errorf("Reason(%v) = %q, want %q", c.err, got, c.want)
+		}
+		if IsAuthOrNotFound(c.err) != (c.want != "") {
+			t.Errorf("IsAuthOrNotFound(%v) disagrees with Reason", c.err)
+		}
+	}
+}
+
+func TestRegistry(t *testing.T) {
+	if got := Registry("registry.digitalocean.com/a/b:1"); got != "registry.digitalocean.com" {
+		t.Fatal(got)
+	}
+	if got := Registry("nginx:1"); got != "index.docker.io" {
+		t.Fatal(got)
+	}
+}
