@@ -35,15 +35,34 @@ When a CVE lands and someone asks **"are we affected?"**, this answers it from w
 
 ## Installation
 
+Homebrew (macOS and Linux):
+
+```bash
+brew install lockdep/tap/stackradar
+```
+
+Install script (downloads the release for your OS/arch into `/usr/local/bin`, or `$BINDIR`):
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lockdep/stackradar-cli/main/install.sh | sh
 ```
 
-Or with Homebrew / Go:
+Go (builds from source; the binary is named `stackradar-cli` and reports `--version` as `dev`):
 
 ```bash
-brew install lockdep/tap/stackradar
-go install github.com/lockdep/stackradar-cli@latest   # installs as `stackradar-cli`
+go install github.com/lockdep/stackradar-cli@latest
+```
+
+Binaries for Linux, macOS and Windows (amd64 and arm64) are on the
+[releases page](https://github.com/lockdep/stackradar-cli/releases/latest). `checksums.txt`
+is signed with [cosign](https://github.com/sigstore/cosign) (keyless, via GitHub Actions);
+to verify a download:
+
+```bash
+cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/lockdep/stackradar-cli/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+sha256sum --ignore-missing -c checksums.txt
 ```
 
 ## The basics
