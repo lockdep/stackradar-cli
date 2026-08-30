@@ -1,0 +1,89 @@
+version: 2
+project_name: stackradar
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: .
+    binary: stackradar
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/lockdep/stackradar-cli/cmd.version={{.Version}}
+      - -X github.com/lockdep/stackradar-cli/cmd.commit={{.ShortCommit}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args: ["sign-blob", "--yes", "--output-certificate=${certificate}", "--output-signature=${signature}", "${artifact}"]
+    artifacts: checksum
+
+# Pushed to lockdep/homebrew-tap so `brew install lockdep/tap/stackradar`
+# works. A cask rather than a formula: goreleaser deprecated `brews`, and a
+# cask installs the released binary as-is instead of rebuilding it. The
+# binaries are not Apple-notarised, so the hook clears the quarantine flag
+# macOS puts on downloads; without it Gatekeeper reports the binary "damaged".
+homebrew_casks:
+  - name: stackradar
+    binaries: [stackradar]
+    directory: Casks
+    homepage: https://stackradar.io
+    description: "See which running Kubernetes pods contain known vulnerabilities — from your laptop"
+    repository:
+      owner: lockdep
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    skip_upload: auto # prereleases build a cask but do not push it
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/stackradar"]
+          end
+
+# Release notes normally come from CHANGELOG.md via `--release-notes`
+# (release.yaml). This is the fallback for a tag with no changelog section.
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^chore:", "^ci:"]
+
+release:
+  footer: |
+    ## Install
+
+    ```sh
+    brew install lockdep/tap/stackradar
+    # or
+    go install github.com/lockdep/stackradar-cli@{{ .Tag }}
+    ```
+
+    ## Verify
+
+    `checksums.txt` is signed with [cosign](https://github.com/sigstore/cosign)
+    (keyless, via GitHub Actions OIDC). Check the signature, then the archive
+    against it:
+
+    ```sh
+    cosign verify-blob checksums.txt \
+      --certificate checksums.txt.pem --signature checksums.txt.sig \
+      --certificate-identity-regexp '^https://github.com/lockdep/stackradar-cli/' \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com
+    sha256sum --ignore-missing -c checksums.txt
+    ```
