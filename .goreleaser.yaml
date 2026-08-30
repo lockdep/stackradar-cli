@@ -27,10 +27,12 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# cosign v3 writes a single Sigstore bundle (certificate + signature) rather
+# than separate .sig/.pem files.
 signs:
   - cmd: cosign
-    certificate: "${artifact}.pem"
-    args: ["sign-blob", "--yes", "--output-certificate=${certificate}", "--output-signature=${signature}", "${artifact}"]
+    signature: "${artifact}.sigstore.json"
+    args: ["sign-blob", "--yes", "--bundle=${signature}", "${artifact}"]
     artifacts: checksum
 
 # Pushed to lockdep/homebrew-tap so `brew install lockdep/tap/stackradar`
@@ -77,12 +79,12 @@ release:
     ## Verify
 
     `checksums.txt` is signed with [cosign](https://github.com/sigstore/cosign)
-    (keyless, via GitHub Actions OIDC). Check the signature, then the archive
-    against it:
+    (keyless, via GitHub Actions OIDC); certificate and signature are in the
+    Sigstore bundle `checksums.txt.sigstore.json`. Check the signature, then
+    the archive against it:
 
     ```sh
-    cosign verify-blob checksums.txt \
-      --certificate checksums.txt.pem --signature checksums.txt.sig \
+    cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
       --certificate-identity-regexp '^https://github.com/lockdep/stackradar-cli/' \
       --certificate-oidc-issuer https://token.actions.githubusercontent.com
     sha256sum --ignore-missing -c checksums.txt
