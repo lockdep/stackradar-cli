@@ -17,6 +17,8 @@ the change; cutting a release moves them under a version.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-30
+
 ### Added
 
 - `stackradar scan` — scan the images running in a Kubernetes cluster (via
@@ -39,4 +41,5 @@ the change; cutting a release moves them under a version.
 - Linux, macOS and Windows binaries for amd64 and arm64, a Homebrew tap
   (`brew install lockdep/tap/stackradar`) and cosign-signed checksums.
 
-[Unreleased]: https://github.com/lockdep/stackradar-cli/compare/HEAD...HEAD
+[Unreleased]: https://github.com/lockdep/stackradar-cli/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/lockdep/stackradar-cli/releases/tag/v0.1.0
