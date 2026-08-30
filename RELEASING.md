@@ -9,7 +9,7 @@ Tagging `v1.2.3` publishes:
 | Artifact | Where |
 | --- | --- |
 | Binaries | `stackradar_1.2.3_<os>_<arch>.tar.gz` (`.zip` on Windows) for linux, darwin and windows on amd64 and arm64, on the GitHub Release |
-| Checksums | `checksums.txt`, cosign-signed (keyless) as `checksums.txt.sig` + `.pem` |
+| Checksums | `checksums.txt`, cosign-signed (keyless) as a Sigstore bundle, `checksums.txt.sigstore.json` |
 | Homebrew | `Casks/stackradar.rb` in [lockdep/homebrew-tap](https://github.com/lockdep/homebrew-tap), so `brew install lockdep/tap/stackradar` |
 | Go | `go install github.com/lockdep/stackradar-cli@v1.2.3` — nothing to publish; the module proxy picks the tag up on first request |
 
