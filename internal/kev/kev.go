@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -48,8 +49,8 @@ func Load(ctx context.Context) (Set, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("cisa.gov returned %s", resp.Status)
 	}
-	var buf []byte
-	buf, err = readAll(resp)
+	// The catalogue is ~2 MB; the cap only guards against a broken upstream.
+	buf, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
 	if err != nil {
 		return nil, err
 	}
@@ -62,21 +63,6 @@ func Load(ctx context.Context) (Set, error) {
 		_ = os.WriteFile(cache, buf, 0o644)
 	}
 	return s, nil
-}
-
-func readAll(resp *http.Response) ([]byte, error) {
-	var out []byte
-	buf := make([]byte, 64<<10)
-	for {
-		n, err := resp.Body.Read(buf)
-		out = append(out, buf[:n]...)
-		if err != nil {
-			if err.Error() == "EOF" {
-				return out, nil
-			}
-			return out, err
-		}
-	}
 }
 
 func parse(b []byte) (Set, error) {

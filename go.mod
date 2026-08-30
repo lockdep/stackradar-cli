@@ -1,6 +1,6 @@
 module github.com/lockdep/stackradar-cli
 
-go 1.26.5
+go 1.26.7
 
 require (
 	github.com/charmbracelet/bubbles v1.0.0

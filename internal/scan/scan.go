@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/osv-scanner/v2/pkg/models"
 	"github.com/google/osv-scanner/v2/pkg/osvscanner"
@@ -51,10 +52,6 @@ func (f Finding) CVEs() []string {
 }
 
 type Scanner struct {
-	// mu serialises DoContainerScan so the OSV.dev probe below can attribute
-	// failed requests to one image. Pulls — the slow, network-bound part —
-	// still run in parallel.
-	mu    sync.Mutex
 	probe *osvProbe
 }
 
@@ -64,6 +61,9 @@ type Scanner struct {
 // observed through http.DefaultTransport — osv-scanner discards the
 // vulnerability matcher's own error status for container scans, so a failed
 // lookup would otherwise come back as an empty, clean-looking result.
+//
+// New installs that probe on the process-wide http.DefaultTransport and
+// osv-scanner's global logger, so call it once per process.
 func New(verbose bool, warn func(msg string)) *Scanner {
 	c := &capture{verbose: verbose, warn: warn}
 	if verbose {
@@ -79,10 +79,13 @@ func New(verbose bool, warn func(msg string)) *Scanner {
 // the findings would otherwise silently be empty.
 var ErrLookupFailed = errors.New("vulnerability lookup failed")
 
+// Tarball scans one image archive. Scans run concurrently; a failed OSV.dev
+// request anywhere during this scan's window is attributed to it, which is
+// the safe direction — an outage affects every in-flight lookup, and a clean
+// image mislabelled "scan failed" during an outage costs a re-run, whereas
+// a lookup failure mislabelled clean would pass a gate.
 func (s *Scanner) Tarball(ctx context.Context, path string) ([]Finding, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.probe.reset()
+	started := time.Now()
 	res, err := osvscanner.DoContainerScan(osvscanner.ScannerActions{
 		Image:          path,
 		IsImageArchive: true,
@@ -101,7 +104,7 @@ func (s *Scanner) Tarball(ctx context.Context, path string) ([]Finding, error) {
 	// Packages were found but nothing matched, and at least one OSV.dev
 	// request failed on the way: that is a lookup failure, not a clean image.
 	if rawVulnCount(res) == 0 {
-		if msg := s.probe.failure(); msg != "" {
+		if msg := s.probe.failureSince(started); msg != "" {
 			return nil, fmt.Errorf("%w: %s", ErrLookupFailed, msg)
 		}
 	}
@@ -123,30 +126,35 @@ type osvProbe struct {
 	next http.RoundTripper
 
 	mu       sync.Mutex
-	failures []string
+	failures []failure
+}
+
+type failure struct {
+	at  time.Time
+	msg string
 }
 
 const osvHost = "api.osv.dev"
 
-func (p *osvProbe) reset() {
-	p.mu.Lock()
-	p.failures = nil
-	p.mu.Unlock()
-}
-
-// failure returns the last recorded failure, or "".
-func (p *osvProbe) failure() string {
+// failureSince returns the most recent failure recorded at or after t, or "".
+func (p *osvProbe) failureSince(t time.Time) string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if len(p.failures) == 0 {
-		return ""
+	for i := len(p.failures) - 1; i >= 0; i-- {
+		if !p.failures[i].at.Before(t) {
+			return p.failures[i].msg
+		}
 	}
-	return p.failures[len(p.failures)-1]
+	return ""
 }
 
 func (p *osvProbe) record(msg string) {
 	p.mu.Lock()
-	p.failures = append(p.failures, msg)
+	p.failures = append(p.failures, failure{at: time.Now(), msg: msg})
+	// Only the recent past matters; keep the slice from growing across a long run.
+	if len(p.failures) > 256 {
+		p.failures = p.failures[len(p.failures)-256:]
+	}
 	p.mu.Unlock()
 }
 
@@ -222,7 +230,7 @@ func flatten(res models.VulnerabilityResults) []Finding {
 							f.Summary = v.GetSummary()
 						}
 						if f.Fixed == "" {
-							f.Fixed = firstFixed(v)
+							f.Fixed = firstFixed(v, pkg.Package.Ecosystem, pkg.Package.Name)
 						}
 					}
 				}
@@ -260,8 +268,17 @@ func pickID(ids, aliases []string) string {
 	return ids[0]
 }
 
-func firstFixed(v *osvschema.Vulnerability) string {
+// firstFixed returns the first non-commit fixed version for the package this
+// finding is about. An advisory's affected list spans every ecosystem and
+// package the advisory touches (a Debian CVE record lists each release, a
+// DSA may cover several source packages), so only entries whose package
+// matches are considered — otherwise nginx on Debian 12 would show the
+// Debian 13 fix, or another package's fix, or a fix where there is none.
+func firstFixed(v *osvschema.Vulnerability, ecosystem, name string) string {
 	for _, a := range v.GetAffected() {
+		if p := a.GetPackage(); p != nil && !samePackage(p, ecosystem, name) {
+			continue
+		}
 		for _, r := range a.GetRanges() {
 			for _, e := range r.GetEvents() {
 				if fx := e.GetFixed(); fx != "" && !looksLikeCommit(fx) {
@@ -271,6 +288,23 @@ func firstFixed(v *osvschema.Vulnerability) string {
 		}
 	}
 	return ""
+}
+
+// samePackage compares an advisory's affected package with the scanned one.
+// Ecosystem suffixes such as "Debian:12" vs "Debian" and case differences in
+// names (Maven/NuGet/PyPI) are tolerated.
+func samePackage(p *osvschema.Package, ecosystem, name string) bool {
+	if !strings.EqualFold(p.GetName(), name) {
+		return false
+	}
+	pe, e := p.GetEcosystem(), ecosystem
+	if pe == "" || e == "" || strings.EqualFold(pe, e) {
+		return true
+	}
+	// A release-qualified ecosystem on one side only ("Debian:12" vs "Debian")
+	// still refers to the same distribution family.
+	base := func(s string) string { return strings.SplitN(s, ":", 2)[0] }
+	return (strings.Contains(pe, ":") != strings.Contains(e, ":")) && strings.EqualFold(base(pe), base(e))
 }
 
 func dedupe(s []string) []string {

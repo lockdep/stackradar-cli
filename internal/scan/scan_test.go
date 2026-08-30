@@ -96,10 +96,10 @@ func TestPickID(t *testing.T) {
 }
 
 func TestFirstFixed(t *testing.T) {
-	if got := firstFixed(vuln("x", "")); got != "" {
+	if got := firstFixed(vuln("x", ""), "", ""); got != "" {
 		t.Errorf("no events: got %q", got)
 	}
-	if got := firstFixed(vuln("x", "", "", "abcdefabcdefabcdefabcdefabcdefabcdefabcd", "1.2.3", "1.2.4")); got != "1.2.3" {
+	if got := firstFixed(vuln("x", "", "", "abcdefabcdefabcdefabcdefabcdefabcdefabcd", "1.2.3", "1.2.4"), "", ""); got != "1.2.3" {
 		t.Errorf("want first non-commit fixed, got %q", got)
 	}
 	// Ranges spread over multiple affected entries.
@@ -107,9 +107,40 @@ func TestFirstFixed(t *testing.T) {
 		{Ranges: []*osvschema.Range{{Events: []*osvschema.Event{{Introduced: "0"}}}}},
 		{Ranges: []*osvschema.Range{{Events: []*osvschema.Event{{Fixed: "2.0.0"}}}}},
 	}}
-	if got := firstFixed(v); got != "2.0.0" {
+	if got := firstFixed(v, "", ""); got != "2.0.0" {
 		t.Errorf("got %q", got)
 	}
+	// A Debian CVE record lists every release and may cover other packages:
+	// only the entry for the scanned package + release counts.
+	aff := func(eco, name string, events ...*osvschema.Event) *osvschema.Affected {
+		return &osvschema.Affected{Package: &osvschema.Package{Ecosystem: eco, Name: name}, Ranges: []*osvschema.Range{{Events: events}}}
+	}
+	deb := &osvschema.Vulnerability{Affected: []*osvschema.Affected{
+		aff("Debian:11", "trafficserver", &osvschema.Event{Introduced: "0"}, &osvschema.Event{Fixed: "8.1.9-1"}),
+		aff("Debian:12", "nginx", &osvschema.Event{Introduced: "0"}),
+		aff("Debian:13", "nginx", &osvschema.Event{Introduced: "0"}, &osvschema.Event{Fixed: "1.24.0-2"}),
+	}}
+	if got := firstFixed(deb, "Debian:12", "nginx"); got != "" {
+		t.Errorf("Debian:12 nginx is unfixed, got %q", got)
+	}
+	if got := firstFixed(deb, "Debian:13", "nginx"); got != "1.24.0-2" {
+		t.Errorf("Debian:13 nginx: got %q", got)
+	}
+	if got := firstFixed(deb, "Debian:11", "trafficserver"); got != "8.1.9-1" {
+		t.Errorf("Debian:11 trafficserver: got %q", got)
+	}
+	// Unqualified ecosystem on the advisory side still matches, as do name case differences.
+	mvn := &osvschema.Vulnerability{Affected: []*osvschema.Affected{aff("Maven", "org.acme:Lib", &osvschema.Event{Fixed: "2.1"})}}
+	if got := firstFixed(mvn, "Maven", "org.acme:lib"); got != "2.1" {
+		t.Errorf("maven: got %q", got)
+	}
+	if got := firstFixed(aff2("Debian", "curl", "8.0-1"), "Debian:12", "curl"); got != "8.0-1" {
+		t.Errorf("unqualified Debian: got %q", got)
+	}
+}
+
+func aff2(eco, name, fixed string) *osvschema.Vulnerability {
+	return &osvschema.Vulnerability{Affected: []*osvschema.Affected{{Package: &osvschema.Package{Ecosystem: eco, Name: name}, Ranges: []*osvschema.Range{{Events: []*osvschema.Event{{Fixed: fixed}}}}}}}
 }
 
 func TestLooksLikeCommit(t *testing.T) {

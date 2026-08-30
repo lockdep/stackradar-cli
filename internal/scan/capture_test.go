@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCaptureSurfacesErrorLevelOnly(t *testing.T) {
@@ -32,6 +33,7 @@ func (f rtFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r)
 
 func TestOSVProbeRecordsOnlyOSVFailures(t *testing.T) {
 	var next rtFunc
+	start := time.Now()
 	p := &osvProbe{next: rtFunc(func(r *http.Request) (*http.Response, error) { return next(r) })}
 	do := func(host, path string) {
 		req := &http.Request{Method: "POST", URL: &url.URL{Scheme: "https", Host: host, Path: path}}
@@ -45,27 +47,27 @@ func TestOSVProbeRecordsOnlyOSVFailures(t *testing.T) {
 	}
 	next = ok
 	do("api.osv.dev", "/v1/querybatch")
-	if p.failure() != "" {
+	if p.failureSince(start) != "" {
 		t.Fatalf("2xx must not be a failure")
 	}
 	next = func(*http.Request) (*http.Response, error) { return nil, errors.New("dial tcp: connection refused") }
 	do("registry-1.docker.io", "/v2/")
-	if p.failure() != "" {
-		t.Fatalf("other hosts are ignored, got %q", p.failure())
+	if p.failureSince(start) != "" {
+		t.Fatalf("other hosts are ignored, got %q", p.failureSince(start))
 	}
 	do("api.osv.dev", "/v1/querybatch")
-	if got := p.failure(); !strings.Contains(got, "connection refused") {
+	if got := p.failureSince(start); !strings.Contains(got, "connection refused") {
 		t.Fatalf("transport error not recorded: %q", got)
 	}
 	next = func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 503, Body: io.NopCloser(strings.NewReader(""))}, nil
 	}
 	do("api.osv.dev", "/v1/vulns/CVE-1")
-	if got := p.failure(); !strings.Contains(got, "HTTP 503") {
+	if got := p.failureSince(start); !strings.Contains(got, "HTTP 503") {
 		t.Fatalf("5xx not recorded: %q", got)
 	}
-	p.reset()
-	if p.failure() != "" {
-		t.Fatalf("reset should clear failures")
+	// A scan that started after the last failure does not see it.
+	if got := p.failureSince(time.Now().Add(time.Second)); got != "" {
+		t.Fatalf("failures before the window must be ignored, got %q", got)
 	}
 }

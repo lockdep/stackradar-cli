@@ -20,7 +20,7 @@ When a CVE lands and someone asks **"are we affected?"**, this answers it from w
 - Scans **every running image** in a cluster through your kubeconfig, deduplicated by digest — or a single image with `--image`, no cluster needed
 - Matches OS and language packages against [OSV](https://osv.dev) using the embedded [osv-scanner](https://github.com/google/osv-scanner) library
 - Flags CVEs in [CISA's Known Exploited Vulnerabilities](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) catalogue, so you fix what is being exploited first
-- Pulls images with your existing registry credentials (`~/.docker/config.json`, credential helpers, cloud keychains)
+- Pulls images with your existing registry credentials (`~/.docker/config.json`, credential helpers, cloud keychains) — or, with `--use-pull-secrets`, the cluster's own `imagePullSecrets`
 - **Table**, **JSON**, or a self-contained **HTML report** you can share — or open live in your browser with `--serve`
 - CI gate with `--fail-on` (exit codes follow grype: `0` clean, `1` error, `2` threshold met)
 - Single static binary. No Docker daemon, no cluster-side agent, no account, no telemetry
@@ -28,6 +28,8 @@ When a CVE lands and someone asks **"are we affected?"**, this answers it from w
 > [!NOTE]
 > Nothing is sent to StackRadar. Image pulls go to **your** registries, package names + versions go to **api.osv.dev**,
 > and one GET goes to **cisa.gov** for the KEV catalogue. That is the full list.
+> Cluster secrets are never read unless you pass `--use-pull-secrets`; then the report says which ones were used,
+> and the credentials stay in memory for the pull and are never written to disk.
 
 ## Installation
 
@@ -39,7 +41,7 @@ Or with Homebrew / Go:
 
 ```bash
 brew install lockdep/tap/stackradar
-go install github.com/lockdep/stackradar-cli@latest
+go install github.com/lockdep/stackradar-cli@latest   # installs as `stackradar-cli`
 ```
 
 ## The basics
@@ -72,6 +74,12 @@ stackradar scan --serve                        # interactive dashboard on 127.0.
 stackradar scan --min-severity high            # quieter per-image detail (none = summary only)
 ```
 
+`--serve` and `-o html` give you the same interactive report: filter by image, package, CVE or pod,
+sort by severity, expand an image to see every finding with the fixed version next to it.
+It is one self-contained file with no external assets, so it opens offline and can be attached to a ticket.
+
+![stackradar --serve dashboard: per-image severity counts with one image expanded to its findings](.github/dashboard.jpg)
+
 Use it as a gate in CI:
 
 ```bash
@@ -85,9 +93,16 @@ logging, `NO_COLOR` is honoured. Run `stackradar scan --help` for every flag.
 
 ## Good to know
 
-- **Images it cannot reach.** If an image lives in a registry your laptop has no credentials for,
-  the row says `not reachable from here` instead of guessing. An in-cluster agent that uses the
-  cluster's own pull secrets solves that — which is what [StackRadar](https://stackradar.io) is.
+- **Images it cannot reach.** If your local docker login cannot pull an image, the row says
+  `not reachable from here: credentials rejected (401)` (or `access denied`, `not found`,
+  `cannot resolve host`) and the summary names the `docker login` to run. If the pods reference
+  `imagePullSecrets`, it offers `--use-pull-secrets` instead — opt-in, because reading secrets
+  out of your cluster is not something a laptop tool should do unasked. An in-cluster agent that
+  always has the cluster's pull secrets — which is what [StackRadar](https://stackradar.io) is —
+  never hits this.
+- **`--use-pull-secrets` needs RBAC.** Your kubeconfig user must be allowed to `get` secrets and
+  serviceaccounts in the scanned namespaces; otherwise the CLI notes the skipped secret and
+  continues with local credentials only.
 - **Point in time.** Run it again tomorrow and yesterday's clean image may have a new CVE — nothing
   here watches for that.
 - **Severity** is the CVSS base score OSV publishes; advisories without one are reported as
