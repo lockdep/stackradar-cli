@@ -5,6 +5,7 @@
 **See which of your running Kubernetes pods contain known vulnerabilities — from your laptop, in about a minute, without installing anything in the cluster.**
 
 <p>
+    <a href="https://github.com/lockdep/stackradar-cli/actions/workflows/ci.yaml"><img src="https://img.shields.io/github/actions/workflow/status/lockdep/stackradar-cli/ci.yaml?branch=main&label=Validations" alt="Validations"></a>
     <a href="https://github.com/lockdep/stackradar-cli/releases/latest"><img src="https://img.shields.io/github/release/lockdep/stackradar-cli.svg" alt="GitHub release"></a>
     <a href="https://github.com/lockdep/stackradar-cli"><img src="https://img.shields.io/github/go-mod/go-version/lockdep/stackradar-cli.svg" alt="Go version"></a>
     <a href="https://github.com/lockdep/stackradar-cli/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache-2.0"></a>
