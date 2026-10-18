@@ -1,34 +1,34 @@
 module github.com/lockdep/stackradar-cli
 
-go 1.26.7
+go 1.27.0
 
 require (
 	github.com/charmbracelet/bubbles v1.0.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
-	github.com/google/go-containerregistry v0.22.0
-	github.com/google/osv-scanner/v2 v2.5.1
-	github.com/olekukonko/tablewriter v1.1.4
-	github.com/ossf/osv-schema/bindings/go v0.0.0-20260730052020-9509daabeece
+	github.com/google/go-containerregistry v0.22.1
+	github.com/google/osv-scanner/v2 v2.7.0
+	github.com/olekukonko/tablewriter v1.1.5
+	github.com/ossf/osv-schema/bindings/go v0.0.0-20260902031056-b388a18021a3
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/term v0.45.0
-	k8s.io/api v0.37.0
-	k8s.io/apimachinery v0.37.0
-	k8s.io/client-go v0.37.0
+	golang.org/x/term v0.47.0
+	k8s.io/api v0.37.1
+	k8s.io/apimachinery v0.37.1
+	k8s.io/client-go v0.37.1
 )
 
 require (
 	bitbucket.org/creachadair/stringset v0.0.14 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
-	deps.dev/api/v3 v3.0.0-20260727054525-2946ae4a6141 // indirect
-	deps.dev/api/v3alpha v0.0.0-20260727054525-2946ae4a6141 // indirect
-	deps.dev/util/maven v0.0.0-20260727054525-2946ae4a6141 // indirect
+	deps.dev/api/v3 v3.0.0-20260811035547-133c155ce203 // indirect
+	deps.dev/api/v3alpha v0.0.0-20260811035547-133c155ce203 // indirect
+	deps.dev/util/maven v0.0.0-20260928000106-0e158e8db197 // indirect
 	deps.dev/util/pypi v0.0.0-20260727054525-2946ae4a6141 // indirect
 	deps.dev/util/resolve v0.0.0-20260727054525-2946ae4a6141 // indirect
 	deps.dev/util/semver v0.0.0-20260727054525-2946ae4a6141 // indirect
 	github.com/BurntSushi/toml v1.6.0 // indirect
-	github.com/CycloneDX/cyclonedx-go v0.11.0 // indirect
+	github.com/CycloneDX/cyclonedx-go v0.12.0 // indirect
 	github.com/GehirnInc/crypt v0.0.0-20230320061759-8cc1b52080c5 // indirect
 	github.com/Microsoft/go-winio v0.6.3-0.20251027160822-ad3df93bed29 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
@@ -46,7 +46,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
-	github.com/charmbracelet/x/ansi v0.11.7 // indirect
+	github.com/charmbracelet/x/ansi v0.11.8 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
@@ -74,7 +74,7 @@ require (
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
-	github.com/erikvarga/go-rpmdb v0.0.0-20250523120114-a15a62cd4593 // indirect
+	github.com/erikvarga/go-rpmdb v0.0.0-20261001143808-1a11b79cbdd3 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
@@ -104,7 +104,7 @@ require (
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
-	github.com/google/osv-scalibr v0.5.3-0.20260814002154-23fa66ca68dd // indirect
+	github.com/google/osv-scalibr v0.5.4-0.20261009010329-5be78a00e3c2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/ianlancetaylor/demangle v0.0.0-20260724033716-83e58baca724 // indirect
 	github.com/icholy/digest v1.2.0 // indirect
@@ -141,8 +141,8 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/owenrumney/go-sarif/v3 v3.3.1 // indirect
-	github.com/package-url/packageurl-go v0.1.6 // indirect
-	github.com/pandatix/go-cvss v0.6.2 // indirect
+	github.com/package-url/packageurl-go v0.1.7 // indirect
+	github.com/pandatix/go-cvss v0.6.4 // indirect
 	github.com/pierrec/lz4/v4 v4.1.27 // indirect
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -187,24 +187,24 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.28.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.6 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
-	golang.org/x/mod v0.39.0 // indirect
-	golang.org/x/net v0.58.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/telemetry v0.0.0-20260811182544-a038080d80e5 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260924152758-ed294f943157 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	golang.org/x/tools v0.49.0 // indirect
+	golang.org/x/tools v0.51.0 // indirect
 	golang.org/x/vuln v1.6.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
-	google.golang.org/grpc v1.83.0 // indirect
-	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
+	google.golang.org/grpc v1.84.0 // indirect
+	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
